@@ -1,0 +1,52 @@
+name: Publish browser-downloadable firmware
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Build release firmware
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download released SD PRO firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir firmware-downloads-work
+          gh release list --limit 100 --json tagName --jq '.[].tagName' > firmware-downloads-work/tags
+          while read -r tag; do
+            gh release download "$tag" \
+              --pattern 'SDP-HomeAssistant-MiniDisplay-[0-9]*.bin' \
+              --dir firmware-downloads-work
+          done < firmware-downloads-work/tags
+          test -n "$(find firmware-downloads-work -maxdepth 1 -name '*.bin' -print -quit)"
+
+      - name: Publish raw firmware files
+        run: |
+          if git show-ref --verify --quiet refs/remotes/origin/firmware-downloads; then
+            git switch firmware-downloads
+          else
+            git switch --orphan firmware-downloads
+          fi
+          mkdir -p firmware
+          cp firmware-downloads-work/*.bin firmware/
+          git add -f firmware
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish firmware downloads"
+          fi
+          git push origin firmware-downloads

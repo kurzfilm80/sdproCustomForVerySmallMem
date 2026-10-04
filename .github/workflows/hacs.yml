@@ -1,0 +1,29 @@
+name: HACS validation
+
+on:
+  pull_request:
+    paths: &hacs-paths
+      - 'hacs.json'
+      - 'custom_components/**'
+      - '.github/workflows/hacs.yml'
+  push:
+    branches: [master]
+    paths: *hacs-paths
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    # HACS only supports public repositories. Local metadata checks still run in CI.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
+        with:
+          category: integration
