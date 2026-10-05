@@ -27,6 +27,7 @@ __pycache__/
 .vscode/
 .env
 .env.*
+.github/
 !.envrc.example
 secrets.yaml
 secrets.json
