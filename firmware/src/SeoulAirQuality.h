@@ -4,6 +4,7 @@
 #include <cmath>
 #include <climits>
 #include "ForecastDate.h"
+#include "CitySettings.h"
 
 struct SeoulAirQualityDay {
   char date[11]{};
@@ -95,4 +96,6 @@ inline bool decodeAirQuality(JsonObjectConst hourly, SeoulAirQuality &out) {
   return true;
 }
 
-bool fetchSeoulAirQuality(SeoulAirQuality &out);
+extern int airQualityLastHttpCode;
+extern const char *airQualityLastError;
+bool fetchSeoulAirQuality(SeoulAirQuality &out, const CitySettings &city);

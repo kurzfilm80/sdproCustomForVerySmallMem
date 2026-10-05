@@ -3,7 +3,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
-#include <ESP8266mDNS.h>
 #include <LittleFS.h>
 #include <WiFiUdp.h>
 #include <Updater.h>
@@ -15,20 +14,25 @@
 #include "SeoulWeather.h"
 #include "SeoulAirQuality.h"
 #include "PageCycle.h"
+#include "ForecastLabels.h"
+#include "DisplaySettings.h"
+#include "ApiRefresh.h"
 #include "fonts/InterTightBold18.h"
 #include "fonts/InterTightBold24.h"
 #include "fonts/InterTightBold36.h"
+#include "fonts/InterTightDigits48.h"
 #include "fonts/InterTightCompact13.h"
 #include "WebAssets.generated.h"
 
 namespace {
 constexpr char kVersion[] = "SeoulWeather-4.0.0";
 constexpr uint32_t kConnectTimeoutMs = 20000;
-constexpr uint32_t kWeatherRefreshMs = 15UL * 60UL * 1000UL;
-constexpr uint32_t kWeatherRetryMs = 60000;
-constexpr uint32_t kAirQualityRefreshMs = 15UL * 60UL * 1000UL;
+constexpr uint32_t kServiceIntervalMs = 100;
+constexpr uint16_t kDividerColor = 0x638F;  // Muted blue-grey on black.
 DeviceConfig config{};
 NetworkSettings networkSettings{};
+CitySettings citySettings{};
+DisplaySettings displaySettings{};
 ESP8266WebServer server(80);
 DNSServer dns;
 TFT_eSPI display;
@@ -36,31 +40,42 @@ SeoulWeatherDay seoulWeather[3]{};
 bool seoulWeatherValid = false;
 SeoulAirQuality seoulAirQuality{};
 bool airQualityValid = false;
-bool airQualityAttempted = false;
-uint32_t lastAirQualityFetchAt = 0;
 bool filesystemReady = false;
 bool accessPointRunning = false;
-bool mdnsReady = false;
 bool timeConfigured = false;
-bool weatherAttempted = false;
-bool lastFetchSucceeded = false;
 bool updating = false;
 bool uploadStarted = false;
 bool uploadSucceeded = false;
 uint8_t wifiAttemptCount = 0;
-uint8_t displayBrightness = 100;
+uint8_t displayBrightness = 255;
+time_t lastBacklightMinute = -1;
+ApiRefresh weatherRefresh, airQualityRefresh;
+bool weatherDirty = true, airQualityDirty = true;
+time_t drawnPageMinute = 0;
+uint32_t lastServiceAt = 0;
 uint32_t connectStartedAt = 0;
-uint32_t lastFetchAt = 0;
 uint32_t lastDrawAt = 0;
 uint32_t restartAt = 0;
 PageCycle pageCycle;
 bool pagesStarted = false;
 
-void applyBacklight() {
+void applyBacklight(bool force = false) {
+  const time_t now = time(nullptr);
+  const time_t minute = now / 60;
+  if (!force && minute == lastBacklightMinute) return;
+  lastBacklightMinute = minute;
+  const bool valid = now > 1000000000;
+  tm localNow{};
+  if (valid) localtime_r(&now, &localNow);
+  const uint8_t brightness = effectiveDisplayBrightness(displaySettings,
+      localNow.tm_hour * 60 + localNow.tm_min, valid);
+  if (brightness == displayBrightness) return;
+  displayBrightness = brightness;
+  // Verified SD PRO GPIO5 PWM control; its backlight is active LOW.
   pinMode(TFT_BL, OUTPUT);
   analogWriteRange(100);
-  analogWrite(TFT_BL, TFT_BACKLIGHT_ON == LOW ? 100 - displayBrightness
-                                            : displayBrightness);
+  analogWriteFreq(1000);
+  analogWrite(TFT_BL, TFT_BACKLIGHT_ON == LOW ? 100 - brightness : brightness);
 }
 
 void message(const String &title, const String &detail) {
@@ -72,45 +87,6 @@ void message(const String &title, const String &detail) {
   display.setTextColor(TFT_WHITE, TFT_BLACK);
   display.drawString(detail, 120, 120);
   lastDrawAt = millis();
-}
-
-// Use a separate document; the former dashboard display.json remains intact.
-bool saveBrightness(uint8_t brightness) {
-  if (!filesystemReady) return false;
-  File file = LittleFS.open("/weather-settings.tmp", "w");
-  if (!file) return false;
-  StaticJsonDocument<128> doc;
-  doc["schemaVersion"] = 1;
-  doc["brightness"] = brightness;
-  const bool written = serializeJson(doc, file) > 0;
-  file.close();
-  if (!written) return false;
-  return LittleFS.rename("/weather-settings.tmp", "/weather-settings.json");
-}
-
-void loadBrightness() {
-  if (!filesystemReady) return;
-  const bool dedicated = LittleFS.exists("/weather-settings.json");
-  File file = LittleFS.open(dedicated ? "/weather-settings.json" : "/display.json", "r");
-  if (!file) return;
-  StaticJsonDocument<1024> doc;
-  const auto error = deserializeJson(doc, file);
-  file.close();
-  const auto schema = inspectStoredConfigSchema(doc.as<JsonObjectConst>(), 1);
-  if (error || !doc.is<JsonObject>() ||
-      schema.state != StoredConfigSchemaState::Current) {
-    if (dedicated) {
-      quarantineStoredConfigFile("/weather-settings.json", "/weather-settings.invalid");
-      saveBrightness(100);
-    }
-    return;
-  }
-  if (doc["brightness"].is<int>() && doc["brightness"].as<int>() >= 0 &&
-      doc["brightness"].as<int>() <= 100) {
-    displayBrightness = doc["brightness"].as<uint8_t>();
-  } else if (dedicated) {
-    saveBrightness(100);
-  }
 }
 
 bool localRequest() {
@@ -160,6 +136,8 @@ void connectToWiFi() {
   if (!wifiConfigured(config)) { startAccessPoint(); return; }
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
+  // Keep web/OTA latency predictable until sleep is validated on this device.
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   configureIpAddress(networkSettings);
   WiFi.hostname(configuredHostname(config).c_str());
   WiFi.begin(config.ssid, config.wifiPassword);
@@ -178,7 +156,11 @@ void sendPage() {
 
 void sendStatus() {
   if (!authenticated()) return;
-  StaticJsonDocument<768> doc;
+  StaticJsonDocument<1792> doc;
+  doc["city"] = citySettings.city;
+  doc["cityName"] = citySettings.name;
+  doc["latitude"] = citySettings.latitude;
+  doc["longitude"] = citySettings.longitude;
   doc["version"] = kVersion;
   doc["ssid"] = config.ssid;
   doc["hostname"] = configuredHostname(config);
@@ -191,6 +173,13 @@ void sendStatus() {
   doc["weatherError"] = seoulWeatherLastErrorText;
   doc["weatherHttpCode"] = seoulWeatherLastHttpCode;
   doc["brightness"] = displayBrightness;
+  encodeDisplaySettings(doc.createNestedObject("displaySettings"), displaySettings);
+  doc["cpuMHz"] = ESP.getCpuFreqMHz();
+  doc["wifiMode"] = static_cast<int>(WiFi.getMode());
+  doc["wifiSleep"] = static_cast<int>(WiFi.getSleepMode());
+  doc["airQualityValid"] = airQualityValid;
+  doc["airQualityError"] = airQualityLastError;
+  doc["airQualityHttpCode"] = airQualityLastHttpCode;
   doc["ntpServer"] = currentNtpServer(networkSettings);
   doc["timezone"] = kDefaultTimezone;
   doc["directOtaEnabled"] = config.directOtaEnabled != 0;
@@ -262,6 +251,96 @@ void saveSettings() {
   restartAt = millis() + 500;
 }
 
+void drawCurrentPage();
+
+void setCity() {
+  if (!authenticated()) return;
+  const String selection = server.arg("city");
+  CitySettings next;
+  if (selection == "CUSTOM") {
+    String name = server.arg("cityName");
+    name.trim();
+    if (!cityNameValid(name.c_str()) ||
+        !normalizeCoordinate(server.arg("latitude").c_str(), 90, next.latitude) ||
+        !normalizeCoordinate(server.arg("longitude").c_str(), 180, next.longitude)) {
+      server.send(422, "text/plain", "CUSTOM: name must be 1-20 printable ASCII characters; latitude -90 to 90, longitude -180 to 180, at most 6 decimals");
+      return;
+    }
+    strcpy(next.city, "CUSTOM");
+    strcpy(next.name, name.c_str());
+  } else if (!selectPresetCity(selection.c_str(), next)) {
+    server.send(422, "text/plain", "Invalid city");
+    return;
+  }
+  if (!saveCitySettings(next, filesystemReady)) {
+    server.send(500, "text/plain", "Could not save city settings");
+    return;
+  }
+  citySettings = next;
+  seoulWeatherValid = airQualityValid = false;
+  for (auto &day : seoulWeather) day = SeoulWeatherDay{};
+  seoulAirQuality = SeoulAirQuality{};
+  weatherRefresh = airQualityRefresh = ApiRefresh{};
+  seoulWeatherLastError = SeoulWeatherError::None;
+  seoulWeatherLastHttpCode = airQualityLastHttpCode = 0;
+  seoulWeatherLastErrorText = "Waiting for new city data";
+  airQualityLastError = "Waiting for new city data";
+  weatherDirty = airQualityDirty = true;
+  // Clear visible old-city data before the next synchronous network request.
+  if (pagesStarted) drawCurrentPage();
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+bool parseDisplayNumber(const String &text, uint16_t maximum, uint16_t &value) {
+  if (!text.length() || text.length() > 3) return false;
+  value = 0;
+  for (unsigned i = 0; i < text.length(); ++i) {
+    if (text[i] < '0' || text[i] > '9') return false;
+    value = value * 10 + text[i] - '0';
+  }
+  return value <= maximum;
+}
+
+void setDisplaySettings() {
+  if (!authenticated()) return;
+  DisplaySettings next = displaySettings;
+  const String rotate = server.arg("autoRotate"), night = server.arg("nightModeEnabled");
+  const String fixed = server.arg("fixedPage");
+  uint16_t weather, air, brightness, nightBrightness;
+  if ((rotate != "true" && rotate != "false") || (night != "true" && night != "false") ||
+      (!fixed.length() && rotate != "true") ||
+      (fixed.length() && fixed != "WEATHER" && fixed != "AIR QUALITY") ||
+      !parseDisplayNumber(server.arg("weatherPageSeconds"), 60, weather) || !pageSecondsValid(weather) ||
+      !parseDisplayNumber(server.arg("airPageSeconds"), 60, air) || !pageSecondsValid(air) ||
+      !parseDisplayNumber(server.arg("brightness"), 100, brightness) ||
+      !((brightness >= 20 && brightness % 20 == 0) || brightness == displaySettings.brightness) ||
+      !parseDisplayNumber(server.arg("nightBrightness"), 50, nightBrightness) || !nightBrightnessValid(nightBrightness) ||
+      !parseDisplayTime(server.arg("nightStart").c_str(), next.nightStart) ||
+      !parseDisplayTime(server.arg("nightEnd").c_str(), next.nightEnd)) {
+    server.send(422, "text/plain", "Invalid display settings: choose listed values and HH:MM times");
+    return;
+  }
+  next.autoRotate = rotate == "true";
+  next.nightModeEnabled = night == "true";
+  next.weatherPageSeconds = weather;
+  next.airPageSeconds = air;
+  next.brightness = brightness;
+  next.nightBrightness = nightBrightness;
+  if (fixed.length()) next.fixedPage = fixed == "WEATHER" ? ForecastPage::Weather : ForecastPage::AirQuality;
+  if (!saveDisplaySettings(next, filesystemReady)) {
+    server.send(500, "text/plain", "Could not save display settings");
+    return;
+  }
+  displaySettings = next;
+  pageCycle.configure(millis(), next.autoRotate, next.weatherPageSeconds,
+                                          next.airPageSeconds, next.fixedPage);
+  applyBacklight(true);
+  if (pagesStarted) drawCurrentPage();
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
 void setBrightness() {
   if (!authenticated()) return;
   const String input = server.arg("brightness");
@@ -275,9 +354,11 @@ void setBrightness() {
   }
   const int value = input.toInt();
   if (value > 100) { server.send(422, "text/plain", "Brightness must be 0-100"); return; }
-  if (!saveBrightness(value)) { server.send(500, "text/plain", "Could not save brightness"); return; }
-  displayBrightness = value;
-  applyBacklight();
+  DisplaySettings next = displaySettings;
+  next.brightness = value;
+  if (!saveDisplaySettings(next, filesystemReady)) { server.send(500, "text/plain", "Could not save brightness"); return; }
+  displaySettings = next;
+  applyBacklight(true);
   server.sendHeader("Location", "/");
   server.send(303);
 }
@@ -286,6 +367,7 @@ void resumeAfterUpdateFailure() {
   updating = false;
   timeConfigured = false;
   lastDrawAt = 0;
+  weatherDirty = airQualityDirty = true;
   // OTA stops every UDP socket, including captive DNS and NTP.
   if (accessPointRunning) dns.start(53, "*", WiFi.softAPIP());
 }
@@ -331,6 +413,8 @@ void configureRoutes() {
   server.on("/update", HTTP_GET, sendPage);
   server.on("/settings", HTTP_POST, saveSettings);
   server.on("/brightness", HTTP_POST, setBrightness);
+  server.on("/display-settings", HTTP_POST, setDisplaySettings);
+  server.on("/city", HTTP_POST, setCity);
   server.on("/update", HTTP_POST, finishUpdate, receiveUpdate);
   server.on("/update_ota", HTTP_POST, finishUpdate, receiveUpdate);
   server.on("/api/v1/firmware", HTTP_POST, finishUpdate, receiveUpdate);
@@ -345,28 +429,31 @@ void configureRoutes() {
   server.begin();
 }
 
-// Scale the existing primitive icon to 36x36 without a sprite or bitmap.
-void drawWeatherIcon(int16_t x, int16_t y, int weatherCode) {
-  constexpr int16_t size = 36;
-  const auto scale = [](int16_t v) -> int16_t { return (v * size + 14) / 28; };
+// Scale primitives for today and compact forecasts without a sprite or bitmap.
+void drawWeatherIcon(int16_t x, int16_t y, int weatherCode, int16_t size) {
+  const auto scale = [size](int16_t v) -> int16_t { return (v * size + 14) / 28; };
+  const int16_t stroke = size >= 60 ? 3 : size >= 36 ? 2 : 1;
   display.fillRect(x, y, size, size, TFT_BLACK);
   const auto circle = [&](int16_t cx, int16_t cy, int16_t r, uint16_t color) {
     display.fillCircle(x+scale(cx), y+scale(cy), scale(r), color);
   };
   const auto outlineCircle = [&](int16_t cx, int16_t cy, int16_t r, uint16_t color) {
-    display.drawCircle(x+scale(cx), y+scale(cy), scale(r), color);
+    for (int16_t inset = 0; inset < stroke; ++inset)
+      display.drawCircle(x+scale(cx), y+scale(cy), scale(r)-inset, color);
   };
   const auto line = [&](int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
-    display.drawLine(x+scale(x1), y+scale(y1), x+scale(x2), y+scale(y2), color);
+    for (int16_t offset = -(stroke/2); offset <= stroke/2; ++offset)
+      display.drawLine(x+scale(x1)+offset, y+scale(y1),
+                       x+scale(x2)+offset, y+scale(y2), color);
   };
   const auto rect = [&](int16_t cx, int16_t cy, int16_t w, int16_t h, uint16_t color) {
     display.fillRect(x+scale(cx), y+scale(cy), scale(w), scale(h), color);
   };
   const auto horizontal = [&](int16_t cx, int16_t cy, int16_t w, uint16_t color) {
-    display.drawFastHLine(x+scale(cx), y+scale(cy), scale(w), color);
+    display.fillRect(x+scale(cx), y+scale(cy), scale(w), stroke, color);
   };
   const auto vertical = [&](int16_t cx, int16_t cy, int16_t h, uint16_t color) {
-    display.drawFastVLine(x+scale(cx), y+scale(cy), scale(h), color);
+    display.fillRect(x+scale(cx), y+scale(cy), stroke, scale(h), color);
   };
   const auto triangle = [&](int16_t x1, int16_t y1, int16_t x2, int16_t y2,
                             int16_t x3, int16_t y3, uint16_t color) {
@@ -445,7 +532,7 @@ void drawWeatherIcon(int16_t x, int16_t y, int weatherCode) {
       return;
     default:
       // Unknown codes get a neutral marker rather than a false forecast.
-      outlineCircle(14, 14, 9, TFT_DARKGREY);
+      outlineCircle(14, 14, 9, TFT_LIGHTGREY);
       vertical(14, 8, 8, TFT_LIGHTGREY);
       circle(14, 20, 1, TFT_LIGHTGREY);
       return;
@@ -459,14 +546,26 @@ uint16_t dustGradeColor(DustGrade grade) {
     case DustGrade::Bad: return TFT_ORANGE;
     case DustGrade::VeryBad: return TFT_RED;
   }
-  return TFT_DARKGREY;
+  return TFT_LIGHTGREY;
 }
 
-ForecastDate displayForecastDate() {
+const char *displayDustGradeName(DustGrade grade) {
+  switch (grade) {
+    case DustGrade::Good: return "GOOD";
+    case DustGrade::Normal: return "OK";
+    case DustGrade::Bad: return "BAD";
+    case DustGrade::VeryBad: return "V.BAD";
+  }
+  return "--";
+}
+
+ForecastDate displayForecastDate(int &weekday) {
+  weekday = -1;
   const time_t now = time(nullptr);
   if (now > 1000000000) {
     tm localNow{};
     localtime_r(&now, &localNow);
+    weekday = localNow.tm_wday;
     return {localNow.tm_year + 1900, localNow.tm_mon + 1, localNow.tm_mday};
   }
   ForecastDate date;
@@ -475,87 +574,189 @@ ForecastDate displayForecastDate() {
   return {};
 }
 
-const char *dayLabel(uint8_t index, ForecastDate date) {
-  if (index == 0) return "TODAY";
-  if (index == 1) return "TOMORROW";
-  return date.year ? forecastWeekdayName(date) : "---";
+// Baseline datums and transparent GFX text prevent adjacent text erasure.
+uint8_t fitTextFont(const char *text, int16_t width, uint8_t maximum = 24) {
+  uint8_t selected = maximum;
+  display.setFreeFont(maximum == 48 ? &InterTightDigits48 : maximum == 36 ? &InterTightBold36 : &InterTightBold24);
+  if (display.textWidth(text) > width && maximum == 48) { display.setFreeFont(&InterTightBold36); selected = 36; }
+  if (display.textWidth(text) > width && maximum >= 36) { display.setFreeFont(&InterTightBold24); selected = 24; }
+  if (display.textWidth(text) > width) { display.setFreeFont(&InterTightBold18); selected = 18; }
+  if (display.textWidth(text) > width) { display.setFreeFont(&InterTightCompact13); selected = 13; }
+  if (display.textWidth(text) > width) { display.setTextFont(1); selected = 6; }
+  return selected;
 }
 
-void drawPageHeader(const char *title) {
+void drawPageHeader() {
   display.fillScreen(TFT_BLACK);
-  display.setTextDatum(MC_DATUM);
-  display.setFreeFont(&InterTightBold24);
-  display.setTextColor(TFT_CYAN, TFT_BLACK);
-  display.drawString(title, 120, 20);
-  char timeLine[32] = "--/-- ---  --:--";
+  display.drawRoundRect(1, 1, 238, 238, 10, kDividerColor);
+  char dateText[6] = "--/--", clockText[6] = "--:--";
+  const char *weekday = "---";
   const time_t now = time(nullptr);
   if (now > 1000000000) {
     tm localNow{};
     localtime_r(&now, &localNow);
-    const ForecastDate date{localNow.tm_year+1900, localNow.tm_mon+1, localNow.tm_mday};
-    snprintf(timeLine, sizeof(timeLine), "%02d/%02d %s  %02d:%02d",
-             date.month, date.day, forecastWeekdayName(date), localNow.tm_hour, localNow.tm_min);
+    snprintf(dateText, sizeof(dateText), "%02u/%02u", unsigned(localNow.tm_mon + 1) % 100, unsigned(localNow.tm_mday) % 100);
+    snprintf(clockText, sizeof(clockText), "%02u:%02u", unsigned(localNow.tm_hour) % 24, unsigned(localNow.tm_min) % 60);
+    weekday = displayWeekdayName(localNow.tm_wday, 0);
   }
-  display.setFreeFont(&InterTightBold18);
-  display.setTextColor(TFT_WHITE, TFT_BLACK);
-  display.drawString(timeLine, 120, 47);
+  display.setTextColor(TFT_WHITE);
+  display.setTextDatum(L_BASELINE);
+  display.setFreeFont(&InterTightBold24);
+  display.drawString(dateText, 4, 31);
+  display.setTextDatum(R_BASELINE);
+  display.setFreeFont(&InterTightDigits48);
+  display.setTextColor(TFT_YELLOW);
+  display.drawString(clockText, 236, 42);
+  display.setTextDatum(C_BASELINE);
+  // The 48px clock leaves a narrow centre lane.  The compact weekday keeps
+  // all possible times (including 23:59) clear of the date and clock.
+  display.setFreeFont(&InterTightCompact13);
+  display.setTextColor(TFT_CYAN);
+  display.drawString(weekday, 85, 29);
+  display.drawFastHLine(59, 33, 42, TFT_CYAN);
+  display.setFreeFont(&InterTightCompact13);
+  // City gets its own small line; it never reduces the date or time font.
+  char cityText[21];
+  strlcpy(cityText, citySettings.name, sizeof(cityText));
+  while (display.textWidth(cityText) > 42 && cityText[0]) cityText[strlen(cityText)-1] = '\0';
+  display.drawString(cityText, 80, 47);
+  display.drawFastHLine(6, 52, 228, kDividerColor);
+}
+
+void drawDroplet(int16_t x, int16_t y, int16_t size) {
+  display.fillTriangle(x + size/2, y, x, y + size*2/3, x + size-1, y + size*2/3, TFT_CYAN);
+  display.fillCircle(x + size/2, y + size*2/3, size/3, TFT_CYAN);
+}
+
+void drawTemperature(float value, bool valid, int16_t right, int16_t baseline,
+                     uint8_t maximum, int16_t width, uint16_t color) {
+  char number[16] = "--";
+  if (valid) snprintf(number, sizeof(number), "%d", static_cast<int>(roundf(value)));
+  display.setTextColor(color);
+  display.setTextDatum(R_BASELINE);
+  const uint8_t size = fitTextFont(number, width, maximum);
+  display.drawString(number, right, baseline);
+  // The digits-only 48px font uses a tiny vector degree mark.
+  const int16_t radius = size >= 36 ? 3 : 2;
+  display.drawCircle(right + (maximum >= 36 ? 8 : 5), baseline - size*3/4 + radius,
+                     radius, color);
+}
+
+void drawRain(const SeoulWeatherDay *weather, int16_t x, int16_t y, bool today) {
+  char percent[8] = "--%";
+  if (weather) snprintf(percent, sizeof(percent), "%d%%", weather->rainProbability);
+  display.setTextColor(TFT_CYAN);
+  if (today) {
+    // TODAY uses a dedicated precipitation column: icon above, value below.
+    drawDroplet(x, y, 24);
+    display.setTextDatum(C_BASELINE);
+    fitTextFont(percent, 38, 24);
+    display.drawString(percent, x + 12, y + 61);
+  } else {
+    fitTextFont(percent, 38, 18);
+    display.setTextDatum(R_BASELINE);
+    display.drawString(percent, 234, y + 11);
+  }
+}
+
+void drawAirQualityFace(int16_t x, int16_t y, int16_t radius, DustGrade grade, bool valid) {
+  const uint16_t color = valid ? dustGradeColor(grade) : TFT_LIGHTGREY;
+  display.fillCircle(x, y, radius, color);
+  const int16_t eyeY = y - radius/5;
+  const int16_t eyeRadius = radius >= 17 ? 2 : 1;
+  display.fillCircle(x - radius/3, eyeY, eyeRadius, TFT_BLACK);
+  display.fillCircle(x + radius/3, eyeY, eyeRadius, TFT_BLACK);
+  if (grade == DustGrade::Bad || grade == DustGrade::VeryBad) {
+    const int16_t mouthY = y + radius/3;
+    if (grade == DustGrade::Bad) {
+      display.drawFastHLine(x - radius/3, mouthY, radius*2/3 + 1, TFT_BLACK);
+    } else {
+      display.drawLine(x - radius/3, mouthY + 2, x, mouthY - 1, TFT_BLACK);
+      display.drawLine(x, mouthY - 1, x + radius/3, mouthY + 2, TFT_BLACK);
+    }
+  } else {
+    const int16_t mouthY = y + radius/4;
+    display.drawLine(x - radius/3, mouthY - 1, x, mouthY + 2, TFT_BLACK);
+    display.drawLine(x, mouthY + 2, x + radius/3, mouthY - 1, TFT_BLACK);
+  }
+}
+
+void drawGradeBadge(int16_t center, int16_t top, int16_t width,
+                    DustGrade grade, bool valid, int16_t height = 20) {
+  const uint16_t color = valid ? dustGradeColor(grade) : TFT_LIGHTGREY;
+  const char *label = valid
+      ? (grade == DustGrade::Normal ? "NORMAL" : displayDustGradeName(grade))
+      : "--";
+  display.fillRoundRect(center - width/2, top, width, height,
+                        height >= 20 ? 6 : 4, color);
+  display.setTextColor(TFT_BLACK);
+  display.setTextDatum(C_BASELINE);
+  fitTextFont(label, width - 6, height >= 20 ? 18 : 13);
+  display.drawString(label, center, top + height - (height >= 20 ? 4 : 3));
 }
 
 void drawWeatherPage() {
-  drawPageHeader("SEOUL");
+  drawPageHeader();
   if (!seoulWeatherValid) {
-    display.setTextColor(TFT_YELLOW, TFT_BLACK);
+    display.setTextDatum(MC_DATUM);
+    display.setFreeFont(&InterTightBold18);
+    display.setTextColor(TFT_YELLOW);
     display.drawString("WEATHER NOT READY", 120, 112);
-    display.setTextColor(TFT_WHITE, TFT_BLACK);
+    display.setTextColor(TFT_WHITE);
     const String error = String(seoulWeatherErrorName(seoulWeatherLastError)) +
                          " " + String(seoulWeatherLastHttpCode);
     display.drawString(error, 120, 139);
-    display.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    display.drawString(seoulWeatherLastErrorText.substring(0, 30), 120, 165);
+    const String detail = seoulWeatherLastErrorText.substring(0, 30);
+    fitTextFont(detail.c_str(), 224);
+    display.setTextColor(TFT_LIGHTGREY);
+    display.drawString(detail, 120, 165);
     return;
   }
-  ForecastDate date = displayForecastDate();
+  int weekday;
+  ForecastDate date = displayForecastDate(weekday);
   for (uint8_t i=0; i<3; ++i) {
-    const int16_t top = 65 + i*58;
     char iso[11]; formatForecastDate(iso, date);
     const SeoulWeatherDay *weather = nullptr;
     for (const auto &day : seoulWeather) {
       if (!strcmp(day.date,iso)) { weather=&day; break; }
     }
-    display.setTextDatum(ML_DATUM);
-    display.setFreeFont(&InterTightBold18);
-    display.setTextColor(i==0 ? TFT_YELLOW : TFT_CYAN, TFT_BLACK);
-    display.drawString(dayLabel(i,date), 8, top+8);
-    drawWeatherIcon(8, top+20, weather ? weather->weatherCode : -1);
-    char temperature[32] = "-- / -- C";
-    char rain[20] = "RAIN --%";
-    if (weather) {
-      snprintf(temperature,sizeof(temperature),"%d / %d C",
-               static_cast<int>(roundf(weather->high)), static_cast<int>(roundf(weather->low)));
-      snprintf(rain,sizeof(rain),"RAIN %d%%",weather->rainProbability);
+    if (i == 0) {
+      drawWeatherIcon(4, 60, weather ? weather->weatherCode : -1, 84);
+      drawTemperature(weather ? weather->high : 0, weather, 178, 105, 48, 78, TFT_ORANGE);
+      drawTemperature(weather ? weather->low : 0, weather, 178, 142, 36, 78, TFT_CYAN);
+      display.drawFastVLine(190, 61, 82, kDividerColor);
+      drawRain(weather, 204, 69, true);
+      display.drawFastHLine(6, 148, 228, kDividerColor);
+    } else {
+      const int16_t row = i == 1 ? 151 : 195;
+      display.setFreeFont(&InterTightBold24);
+      display.setTextColor(TFT_WHITE);
+      display.setTextDatum(L_BASELINE);
+      display.drawString(displayWeekdayName(weekday, i), 5, row+30);
+      drawWeatherIcon(62, row+3, weather ? weather->weatherCode : -1, 36);
+      drawTemperature(weather ? weather->high : 0, weather, 144, row+30, 36, 42, TFT_WHITE);
+      drawTemperature(weather ? weather->low : 0, weather, 187, row+30, 24, 34, TFT_CYAN);
+      display.drawFastVLine(195, row+4, 36, kDividerColor);
+      drawRain(weather, 0, row+19, false);
+      if (i == 1) display.drawFastHLine(6, 194, 228, kDividerColor);
     }
-    display.setTextDatum(MR_DATUM);
-    display.setTextColor(TFT_WHITE,TFT_BLACK);
-    display.setFreeFont(&InterTightBold24);
-    if (display.textWidth(temperature)>108) display.setFreeFont(&InterTightBold18);
-    display.drawString(temperature,232,top+14);
-    display.setFreeFont(&InterTightBold18);
-    display.setTextColor(TFT_LIGHTGREY,TFT_BLACK);
-    display.drawString(rain,232,top+42);
-    if (i<2) display.drawFastHLine(8,top+57,224,TFT_DARKGREY);
     if (date.year) date=nextForecastDate(date);
   }
 }
 
 void drawAirQualityPage() {
-  drawPageHeader("SEOUL AIR");
+  drawPageHeader();
+  display.setTextDatum(C_BASELINE);
   display.setFreeFont(&InterTightBold18);
-  display.setTextColor(TFT_LIGHTGREY,TFT_BLACK);
-  display.drawString("PM2.5",140,72);
-  display.drawString("PM10",210,72);
-  ForecastDate date=displayForecastDate();
+  display.setTextColor(TFT_LIGHTGREY);
+  display.drawString("PM2.5",60, 76);
+  display.drawString("PM10",180, 76);
+  display.drawFastVLine(120, 61, 83, kDividerColor);
+  display.drawFastHLine(6, 148, 228, kDividerColor);
+  int weekday;
+  ForecastDate date=displayForecastDate(weekday);
   for (uint8_t i=0; i<3; ++i) {
-    const int16_t y=99+i*54;
+    const int16_t row = i == 1 ? 153 : 195;
     char iso[11]; formatForecastDate(iso,date);
     const SeoulAirQualityDay *reading=nullptr;
     if (airQualityValid) {
@@ -563,36 +764,58 @@ void drawAirQualityPage() {
         if (!strcmp(day.date,iso)) { reading=&day; break; }
       }
     }
-    display.setFreeFont(&InterTightBold18);
-    display.setTextDatum(ML_DATUM);
-    display.setTextColor(i==0 ? TFT_YELLOW : TFT_CYAN,TFT_BLACK);
-    display.drawString(dayLabel(i,date),4,y+5);
+    if (i != 0) {
+      display.setTextDatum(L_BASELINE);
+      display.setFreeFont(&InterTightBold24);
+      display.setTextColor(TFT_WHITE);
+      display.drawString(displayWeekdayName(weekday, i), 4, row+29);
+    }
     for (uint8_t column=0; column<2; ++column) {
       const bool valid=reading && (column==0 ? reading->pm25Valid : reading->pm10Valid);
       const int value=reading ? (column==0 ? reading->pm25 : reading->pm10) : 0;
       const DustGrade grade=dustGrade(value,column==0);
-      const int16_t x=column==0 ? 140 : 210;
-      display.setTextColor(valid ? dustGradeColor(grade) : TFT_DARKGREY,TFT_BLACK);
-      display.setTextDatum(MC_DATUM);
+      const int16_t x = i == 0 ? (column == 0 ? 48 : 199)
+                               : (column == 0 ? 134 : 207);
+      display.setTextColor(valid ? dustGradeColor(grade) : TFT_LIGHTGREY);
+      display.setTextDatum(C_BASELINE);
       char number[12]="--";
-      if (valid) snprintf(number,sizeof(number),"%d",value);
-      display.setFreeFont(&InterTightBold36);
-      if (display.textWidth(number)>64) display.setFreeFont(&InterTightBold24);
-      if (display.textWidth(number)>64) display.setFreeFont(&InterTightBold18);
-      if (display.textWidth(number)>64) display.setTextFont(1);
-      display.drawString(number,x,y);
-      display.setFreeFont(&InterTightCompact13);
-      display.drawString(valid ? dustGradeName(grade) : "--",x,y+25);
+      if (valid) {
+        if (value > 999) strlcpy(number, "999", sizeof(number));
+        else snprintf(number,sizeof(number),"%d",value);
+      }
+      fitTextFont(number, i == 0 ? 62 : 48, i == 0 ? 48 : 36);
+      display.drawString(number, x, i == 0 ? 121 : row+26);
+      if (i == 0) {
+        drawAirQualityFace(column == 0 ? 100 : 143, 104, column == 0 ? 18 : 17, grade, valid);
+        drawGradeBadge(column == 0 ? 60 : 180, 125, 100, grade, valid);
+      } else {
+        if (column == 0) drawAirQualityFace(86, row + 18, 14, grade, valid);
+        drawGradeBadge(column == 0 ? 136 : 205, row+29,
+                       column == 0 ? 60 : 60, grade, valid, 15);
+      }
     }
-    if (i<2) display.drawFastHLine(4,y+35,232,TFT_DARKGREY);
+
+    if (i == 1) {
+      display.drawFastVLine(168, row+3, 38, kDividerColor);
+      display.drawFastHLine(6, 194, 228, kDividerColor);
+    } else if (i == 2) {
+      display.drawFastVLine(168, row+3, 38, kDividerColor);
+    }
+
     if (date.year) date=nextForecastDate(date);
   }
 }
 
 // Rendering and page timing never initiate a network request.
 void drawCurrentPage() {
-  if (pageCycle.page==ForecastPage::Weather) drawWeatherPage();
-  else drawAirQualityPage();
+  if (pageCycle.page==ForecastPage::Weather) {
+    drawWeatherPage();
+    weatherDirty = false;
+  } else {
+    drawAirQualityPage();
+    airQualityDirty = false;
+  }
+  drawnPageMinute = time(nullptr) / 60;
   lastDrawAt=millis();
 }
 
@@ -605,12 +828,15 @@ void setup() {
   loadDeviceConfig(config);
   filesystemReady = LittleFS.begin();
   loadNetworkSettings(networkSettings, filesystemReady);
-  loadBrightness();
+  loadDisplaySettings(displaySettings, filesystemReady);
+  pageCycle.configure(millis(), displaySettings.autoRotate, displaySettings.weatherPageSeconds,
+                      displaySettings.airPageSeconds, displaySettings.fixedPage);
+  loadCitySettings(citySettings, filesystemReady);
   display.init();
   display.setRotation(0);
   display.setTextWrap(false, false);
   applyBacklight();
-  message("SEOUL WEATHER", "Starting...");
+  message(citySettings.name, "Starting...");
   configureRoutes();
   connectToWiFi();
 }
@@ -618,16 +844,25 @@ void setup() {
 void loop() {
   server.handleClient();
   if (accessPointRunning) dns.processNextRequest();
-  if (restartAt && static_cast<int32_t>(millis() - restartAt) >= 0) ESP.restart();
-  if (updating || restartAt) { delay(2); return; }
-  if (pagesStarted && (!accessPointRunning || WiFi.status()==WL_CONNECTED)) {
-    if (pageCycle.advance(millis()) || !lastDrawAt || millis()-lastDrawAt>=30000)
-      drawCurrentPage();
+  const uint32_t now = millis();
+  if (restartAt && static_cast<int32_t>(now - restartAt) >= 0) ESP.restart();
+  // Short cooperative idle keeps HTTP/DNS serviced without spinning on timers.
+  if (updating || restartAt || now - lastServiceAt < kServiceIntervalMs) {
+    delay(10);
+    return;
   }
-  if (WiFi.status() != WL_CONNECTED) {
+  lastServiceAt = now;
+  applyBacklight();
+  const bool connected = WiFi.status() == WL_CONNECTED;
+  if (pagesStarted && (!accessPointRunning || connected)) {
+    const bool pageChanged = pageCycle.advance(now);
+    const bool dirty = pageCycle.page == ForecastPage::Weather
+        ? weatherDirty : airQualityDirty;
+    if (pageChanged || dirty || time(nullptr) / 60 != drawnPageMinute || !lastDrawAt) drawCurrentPage();
+  }
+  if (!connected) {
     timeConfigured = false;
-    if (mdnsReady) { MDNS.close(); mdnsReady = false; }
-    if (wifiConfigured(config) && millis() - connectStartedAt >= kConnectTimeoutMs) {
+    if (wifiConfigured(config) && now - connectStartedAt >= kConnectTimeoutMs) {
       const uint8_t limit = config.wifiRetryLimit ? config.wifiRetryLimit : kDefaultWifiRetryLimit;
       if (wifiAttemptCount >= limit) startAccessPoint();
       else {
@@ -636,50 +871,52 @@ void loop() {
         WiFi.begin(config.ssid, config.wifiPassword);
         message("Retrying Wi-Fi", config.ssid);
       }
-      connectStartedAt = millis();
+      connectStartedAt = now;
     }
-    delay(2);
+    delay(10);
     return;
+  }
+  if (accessPointRunning) {
+    dns.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    accessPointRunning = false;
+    weatherDirty = airQualityDirty = true;
   }
   wifiAttemptCount = 0;
   if (!pagesStarted) {
-    pagesStarted=true;
-    pageCycle.begin(millis());
+    pagesStarted = true;
+    pageCycle.begin(now);
     drawCurrentPage();
   }
   if (!timeConfigured) {
     configureTimeService(networkSettings, kDefaultTimezone);
     timeConfigured = true;
-    lastDrawAt = 0;
   }
-  if (!mdnsReady) {
-    mdnsReady = MDNS.begin(configuredHostname(config).c_str());
-    if (mdnsReady) MDNS.addService("http", "tcp", 80);
-  }
-  if (mdnsReady) MDNS.update();
-  const uint32_t interval = lastFetchSucceeded ? kWeatherRefreshMs : kWeatherRetryMs;
-  if (!weatherAttempted || millis() - lastFetchAt >= interval) {
-    weatherAttempted = true;
+  if (weatherRefresh.due(now)) {
     SeoulWeatherDay next[3]{};
-    lastFetchSucceeded = fetchSeoulWeather(next);
-    // Count from completion so a slow failure still leaves a full retry pause.
-    lastFetchAt = millis();
-    if (lastFetchSucceeded) {
+    const bool success = fetchSeoulWeather(next, citySettings);
+    weatherRefresh.complete(millis(), success);
+    if (success) {
       memcpy(seoulWeather, next, sizeof(seoulWeather));
       seoulWeatherValid = true;
     }
-    drawCurrentPage();
-    // Return to the web server before starting the other HTTPS request.
-    delay(2);
-    return;
+    // Failed requests redraw diagnostics only while there is no cached forecast.
+    weatherDirty = success || !seoulWeatherValid;
+    if (pageCycle.page == ForecastPage::Weather && weatherDirty) drawCurrentPage();
+    delay(10);
+    return;  // Service HTTP before starting the other HTTPS request.
   }
-  if (!airQualityAttempted || millis() - lastAirQualityFetchAt >= kAirQualityRefreshMs) {
-    airQualityAttempted = true;
+  if (airQualityRefresh.due(now)) {
     SeoulAirQuality next{};
-    airQualityValid = fetchSeoulAirQuality(next);
-    lastAirQualityFetchAt = millis();
-    if (airQualityValid) seoulAirQuality = next;
-    drawCurrentPage();
+    const bool success = fetchSeoulAirQuality(next, citySettings);
+    airQualityRefresh.complete(millis(), success);
+    if (success) {
+      seoulAirQuality = next;
+      airQualityValid = true;
+      airQualityDirty = true;
+      if (pageCycle.page == ForecastPage::AirQuality) drawCurrentPage();
+    }
   }
-  delay(2);
+  delay(10);
 }

@@ -13,9 +13,9 @@ uint32_t seoulWeatherLastAttemptAt = 0;
 
 static const char kWeatherUrl[] =
     "https://api.open-meteo.com/v1/forecast"
-    "?latitude=37.5665&longitude=126.9780"
+    "?latitude=%s&longitude=%s"
     "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-    "&timezone=Asia%2FSeoul&forecast_days=3";
+    "&timezone=Asia%%2FSeoul&forecast_days=3";
 
 const char* seoulWeatherErrorName(SeoulWeatherError e) {
   switch (e) {
@@ -39,7 +39,7 @@ static bool fail(SeoulWeatherError e, const String& text, int httpCode = 0) {
   return false;
 }
 
-bool fetchSeoulWeather(SeoulWeatherDay out[3]) {
+bool fetchSeoulWeather(SeoulWeatherDay out[3], const CitySettings &city) {
   seoulWeatherLastAttemptAt = millis();
   seoulWeatherLastHttpCode = 0;
   seoulWeatherLastErrorText = "";
@@ -66,7 +66,9 @@ bool fetchSeoulWeather(SeoulWeatherDay out[3]) {
   http.setReuse(false);
   http.useHTTP10(true);  // simpler body handling on ESP8266
 
-  if (!http.begin(client, kWeatherUrl))
+  char url[320];
+  snprintf(url, sizeof(url), kWeatherUrl, city.latitude, city.longitude);
+  if (!http.begin(client, url))
     return fail(SeoulWeatherError::Begin, "http.begin failed");
 
   const int code = http.GET();

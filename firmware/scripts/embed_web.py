@@ -2,14 +2,19 @@
 """Compress the standalone weather setup/OTA page into flash with Zopfli.
 
 Run with the PlatformIO Python environment (which includes zopfli).
-The page has no JavaScript, npm dependencies or dashboard schema.
+Run npm --prefix web ci before embedding; Terser minifies the city form script.
 """
 from pathlib import Path
 import re
+import subprocess
 import zopfli.gzip
 
 ROOT = Path(__file__).resolve().parents[1]
-source = re.sub(r">\s+<", "><", (ROOT / "web/index.html").read_text()).strip().encode()
+subprocess.run(["npm", "--prefix", str(ROOT / "web"), "run", "build"], check=True)
+html = (ROOT / "web/index.html").read_text()
+script = (ROOT / "web/city.min.js").read_text().strip()
+html = html.replace('<script src="city.min.js"></script>', "<script>" + script + "</script>")
+source = re.sub(r">\s+<", "><", html).strip().encode()
 payload = zopfli.gzip.compress(source, numiterations=15)
 rows = ["  " + ", ".join(f"0x{b:02x}" for b in payload[i:i + 16]) + ","
         for i in range(0, len(payload), 16)]

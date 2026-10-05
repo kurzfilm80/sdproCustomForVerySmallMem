@@ -57,12 +57,12 @@ int main(int argc,char **argv) {
     assert(!parse(json,out)); assert(out.days[0].pm25==123);
   }
   PageCycle cycle; cycle.begin(100);
-  assert(!cycle.advance(12099)); assert(cycle.advance(12100));
+  assert(!cycle.advance(15099)); assert(cycle.advance(15100));
   assert(cycle.page==ForecastPage::AirQuality);
-  assert(!cycle.advance(20099)); assert(cycle.advance(20100));
+  assert(!cycle.advance(25099)); assert(cycle.advance(25100));
   assert(cycle.page==ForecastPage::Weather);
   cycle.begin(UINT32_MAX-1000);
-  assert(!cycle.advance(10998)); assert(cycle.advance(10999));
+  assert(!cycle.advance(13998)); assert(cycle.advance(13999));
   assert(cycle.page==ForecastPage::AirQuality);
 
   if (argc==3) {
