@@ -22,6 +22,8 @@
 - Repair standalone build/check commands and CI firmware artifact generation.
 - Use committed HA preview font data instead of invoking a removed generator.
 - Validate ticker symbols with modern browser Unicode pattern semantics.
+- Replace obsolete notification-portal CI checks with real browser coverage of
+  ticker registration, storage failures and mobile layout.
 - Add native ticker parsing/settings and portal regression tests, and repair
   warning errors in the existing URL-boundary test harness.
 

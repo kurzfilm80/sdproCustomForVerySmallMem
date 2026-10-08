@@ -9,7 +9,7 @@ Branch: `feature/ticker-firmware`; starting commit:
 | Profile | BIN bytes | Linked Flash bytes / 1,044,464 | Linked RAM bytes / 81,920 | Result |
 | --- | ---: | ---: | ---: | --- |
 | sdpro-weather | 574,672 | 570,523 (54.6%) | 34,460 (42.1%) | PASS |
-| sdpro-ticker | 575,648 | 571,491 (54.7%) | 35,496 (43.3%) | PASS |
+| sdpro-ticker | 575,712 | 571,555 (54.7%) | 35,496 (43.3%) | PASS |
 
 ESP-12E / ESP8266, 80 MHz CPU, 4 MB DIO / 40 MHz Flash,
 `eagle.flash.4m2m.ld`. Both image headers: `e9 02 02 40`.
@@ -18,12 +18,12 @@ GCC 10.3.0; TFT_eSPI 2.5.43; ArduinoJson 6.21.6.
 
 ```text
 451a4461d27ae233ae91cc77d377400cedf8915be3d936f90ccbc3c406335b88  sdpro-weather.bin
-add8feb69855afa8cf48b62aa8b15e26387250556d659da9d7cc494abd9dfb75  sdpro-ticker.bin
+bc474519904bf0115e7a0a10fe74632d00dc79dddfe78da4bcecc35fe3beafba  sdpro-ticker.bin
 ```
 
 A separate detached checkout at `92d88dd` produced a weather BIN with the exact
 same length and SHA-256. Both `sdpro` and `sdpro-weather` are byte-identical to
-that baseline. The ticker image adds 976 BIN bytes and 1,036 linked RAM bytes.
+that baseline. The ticker image adds 1,040 BIN bytes and 1,036 linked RAM bytes.
 Symbol inspection found no linked SPIFFS, `strftime`, `_printf_float` or
 `_scanf_float` symbols in the ticker ELF. Build dependencies download successfully
 only after mirror retries in this environment. No C/C++ compiler warnings/errors
@@ -47,9 +47,11 @@ legacy regex escape strings. These are dependency warnings, not compile errors.
 
 Native tests used address and undefined-behavior sanitizers. LeakSanitizer was
 disabled because process enumeration is unavailable in this managed runtime.
-`make web-check` and `git diff --check` passed. Browser/device rendering, actual
+`make web-check` and `git diff --check` passed. Physical device rendering, actual
 LittleFS power-loss behavior and actual HTTP server routes were not emulated;
-those remain hardware acceptance tests. Existing CI's firmware job now builds
+the server/filesystem portions remain hardware acceptance tests. A real
+Chromium suite now tests the production minified ticker UI in CI, including
+registration, browser patterns, persisted reload, errors and mobile layout. Existing CI's firmware job now builds
 both profiles and runs these regressions; legacy HA packaging tasks are outside
 this firmware task.
 
@@ -74,7 +76,10 @@ this firmware task.
   `export_preview_fonts.py` had already been removed before this branch.
   The follow-up build repair uses the committed `firmware-fonts.generated.json`
   instead. Local `make card-check card-build` passes with unchanged generated
-  frontend assets; its final CI result must be checked separately.
+  frontend assets. Run 37793409849 also passed firmware, integration, metadata,
+  HA card build and both standalone web checks. It exposed an obsolete
+  notification test requiring deleted `firmware/web/dist` assets; that test is
+  replaced by the current ticker browser suite. Check the PR's final CI run.
 
 ## Changed files
 
@@ -88,7 +93,7 @@ Firmware: `firmware/src/main.cpp`, `Ticker.h`, `TickerModel.h`, `TickerJson.h`,
 Web: `firmware/web/ticker.html`, `ticker.js`.
 
 Tests: `firmware/tests/ticker_test.cpp`, `ticker_portal_test.cjs`,
-`export_firmware_test.py`, `api_urls_test.py`.
+`export_firmware_test.py`, `api_urls_test.py`, `ticker_browser_test.cjs`.
 
 Documentation/notices: `README.md`, `CHANGELOG.md`, `THIRD_PARTY.md`,
 `docs/ticker-firmware.md`, `docs/ticker-build-validation.md`,
