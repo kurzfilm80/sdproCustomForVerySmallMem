@@ -18,7 +18,7 @@ GCC 10.3.0; TFT_eSPI 2.5.43; ArduinoJson 6.21.6.
 
 ```text
 451a4461d27ae233ae91cc77d377400cedf8915be3d936f90ccbc3c406335b88  sdpro-weather.bin
-a1c7eca2b3f584c638f5d133ec81d9dde00a132b458171110506dfc9529664d1  sdpro-ticker.bin
+add8feb69855afa8cf48b62aa8b15e26387250556d659da9d7cc494abd9dfb75  sdpro-ticker.bin
 ```
 
 A separate detached checkout at `92d88dd` produced a weather BIN with the exact
@@ -39,7 +39,8 @@ legacy regex escape strings. These are dependency warnings, not compile errors.
   forecast labels; air quality; refresh scheduling; display settings; city
   settings; shared stored-config validation.
 - 2 portal groups: weather controls and ticker load/add/remove/save/refresh,
-  8-symbol cap, text escaping, stale status and save failures. Both source and
+  8-symbol cap, Unicode-v symbol pattern validation, text escaping, stale status
+  and save failures. Both source and
   Terser-minified JavaScript were exercised with a simulated DOM/API.
 - 3 Python groups: weather layout source invariants; actual URL format/bounds;
   distinct firmware export paths, incremental export and OTA ceiling rejection.
@@ -68,7 +69,12 @@ this firmware task.
   upstream's approach. Keep the device on a trusted LAN.
 - This checkout has no stock firmware dump. Obtain and hash a stock backup before
   replacing stock; a verified weather BIN is available for custom-firmware rollback.
-- Remote GitHub Actions results are separate from these local results.
+- GitHub Actions run 37792478454 passed firmware build/tests/artifact upload,
+  integration and metadata. The legacy frontend job failed because
+  `export_preview_fonts.py` had already been removed before this branch.
+  The follow-up build repair uses the committed `firmware-fonts.generated.json`
+  instead. Local `make card-check card-build` passes with unchanged generated
+  frontend assets; its final CI result must be checked separately.
 
 ## Changed files
 

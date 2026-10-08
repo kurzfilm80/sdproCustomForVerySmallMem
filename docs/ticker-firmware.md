@@ -8,6 +8,8 @@
 for the legacy weather build. Switching images preserves EEPROM and LittleFS.
 The ticker image does not poll weather or air-quality services.
 
+Use Python 3.12 and Node.js 24 (the portal tests verify modern Unicode-v patterns).
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install platformio==6.1.19 zopfli

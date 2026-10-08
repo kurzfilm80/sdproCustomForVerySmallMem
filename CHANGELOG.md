@@ -20,6 +20,8 @@
   fail export when the conservative 1 MiB OTA image ceiling is exceeded.
 - Restore the bundled Inter Tight OFL notice and record the WTFPL ticker source.
 - Repair standalone build/check commands and CI firmware artifact generation.
+- Use committed HA preview font data instead of invoking a removed generator.
+- Validate ticker symbols with modern browser Unicode pattern semantics.
 - Add native ticker parsing/settings and portal regression tests, and repair
   warning errors in the existing URL-boundary test harness.
 

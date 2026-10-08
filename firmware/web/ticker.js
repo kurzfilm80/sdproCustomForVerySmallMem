@@ -12,7 +12,7 @@ function addRow(position = {}) {
   for (const key of ['symbol', 'quantity', 'cost']) {
     const cell = row.insertCell(), input = document.createElement('input');
     input.dataset.key = key;
-    if (key === 'symbol') { input.maxLength = 23; input.pattern = '[A-Za-z0-9.\\^=_-]+'; input.required = true; }
+    if (key === 'symbol') { input.maxLength = 23; input.pattern = '[A-Za-z0-9.\\^=_\\-]+'; input.required = true; }
     else { input.type = 'number'; input.min = '0'; input.max = '1000000000'; input.step = 'any'; input.required = true; }
     input.value = position[key] ?? (key === 'symbol' ? '' : 0);
     input.setAttribute('aria-label', key);

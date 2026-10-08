@@ -30,7 +30,11 @@ async function check(script) {
   for (let i=0;i<10;i++) elements.add.onclick();
   assert.equal(elements.rows.children.length,8);
   while(elements.rows.children.length>1) elements.rows.children.at(-1).children[3].children[0].onclick();
-  const inputs=elements.rows.children[0].querySelectorAll(); inputs[0].value='btc-usd';
+  const inputs=elements.rows.children[0].querySelectorAll();
+  const symbolPattern = new RegExp(`^(?:${inputs[0].pattern})$`, 'v');
+  for (const symbol of ['AAPL', 'BTC-USD', '^GSPC', 'EURUSD=X', '005930.KS']) assert(symbolPattern.test(symbol));
+  assert(!symbolPattern.test('AAPL?x'));
+  inputs[0].value='btc-usd';
   await elements.form.onsubmit({preventDefault(){}});
   const post=calls.find(x=>x.path==='/api/v1/tickers' && x.options.method==='POST');
   const saved=JSON.parse(post.options.body); assert.equal(saved.positions[0].symbol,'BTC-USD'); assert.equal(saved.positions[0].quantity,2);

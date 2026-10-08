@@ -58,7 +58,7 @@ elf-report:
 		--toolchain $(PLATFORMIO_CORE_DIR)/packages/toolchain-xtensa/bin
 
 card-build: schema-sync
-	python3 firmware/scripts/export_preview_fonts.py
+	@test -f integration/card/src/firmware-fonts.generated.json || { echo "Missing bundled preview font data"; exit 1; }
 	npm --prefix integration/card run build
 
 card-check: schema-check
