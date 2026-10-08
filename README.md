@@ -317,3 +317,10 @@ Hardware research and inspiration:
 [MIT](LICENSE). See [third-party notices](THIRD_PARTY.md) for dependencies and assets.
 
 Enjoy your tiny screen? You can [buy me a coffee](https://ko-fi.com/piotrkochan).
+
+## Separate SD PRO weather / ticker images
+
+Run `make build-firmwares` to build `dist/sdpro-weather.bin` and
+`dist/sdpro-ticker.bin`. The weather image keeps the existing weather/air-quality
+screens; the ticker image adds a local editor, eight Yahoo symbols and rotation.
+See [build, limitations and OTA acceptance](docs/ticker-firmware.md).

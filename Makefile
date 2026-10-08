@@ -6,9 +6,7 @@ export MINI_DISPLAY_BUILD_VERSION := $(FIRMWARE_VERSION)
 
 .PHONY: build build-all package profile-build clean check size elf-report bootstrap-build bootstrap-clean card-build card-check schema-sync schema-check web-build web-check test-native
 
-build:
-	python3 firmware/scripts/index_smooth_fonts.py
-	cd firmware && $(PIO) run
+build: build-firmwares
 
 build-all: package
 
@@ -38,19 +36,20 @@ bootstrap-build:
 bootstrap-clean:
 	cd firmware-bootstrap && $(PIO) run --target clean
 
-check: schema-check
-	cd firmware && $(PIO) check
+check: build-firmwares
+	$(PYTHON) firmware/scripts/test_firmwares.py
 
-web-build: web-check
-	npm --prefix firmware/web run build
-	python3 firmware/scripts/embed_web.py
+web-build:
+	$(PYTHON) firmware/scripts/embed_web.py
+	$(PYTHON) firmware/scripts/embed_ticker.py
 
-web-check:
-	npm --prefix firmware/web run format:check
-	npm --prefix firmware/web run check
+web-check: web-build
+	node --check firmware/web/city.js
+	node --check firmware/web/ticker.js
+	cd firmware && node tests/city_portal_test.cjs && node tests/ticker_portal_test.cjs
 
 size: build
-	$(PIO) run --project-dir firmware --target size
+	$(PIO) run --project-dir firmware -e sdpro-weather -e sdpro-ticker --target size
 
 elf-report:
 	@test -f firmware/.pio/build/sdpro/firmware.elf || { echo "build firmware first"; exit 1; }
@@ -209,3 +208,15 @@ test-native:
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
 		-I firmware/src firmware/tests/dashboard_page_scanner_test.cpp -o .cache/tests/dashboard-page-scanner
 	.cache/tests/dashboard-page-scanner
+
+# Standalone SD PRO images (the older HA packaging targets are unrelated).
+PYTHON ?= $(CURDIR)/.venv/bin/python
+.PHONY: build-firmwares test-firmwares
+build-firmwares:
+	npm ci --prefix firmware/web
+	$(PYTHON) firmware/scripts/embed_web.py
+	$(PYTHON) firmware/scripts/embed_ticker.py
+	$(PIO) run --project-dir firmware -e sdpro-weather -e sdpro-ticker
+
+test-firmwares:
+	$(PYTHON) firmware/scripts/test_firmwares.py

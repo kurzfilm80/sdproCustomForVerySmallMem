@@ -34,3 +34,5 @@ secrets.json
 *.elf
 *.map
 *.disasm
+
+firmware/src/TickerAssets.generated.h

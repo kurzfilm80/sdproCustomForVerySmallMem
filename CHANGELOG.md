@@ -2,7 +2,26 @@
 
 ## Unreleased
 
+### Features
+
+- Add a separate SD PRO ticker image with up to eight Yahoo Finance symbols,
+  prices, daily changes, bounded sparkline charts and per-position profit/loss.
+- Add a local web ticker editor with persistent settings and manual refresh;
+  retain the weather/air-quality firmware and shared Wi-Fi/recovery/OTA controls.
+
+### Refactoring
+
+- Select weather or ticker rendering at compile time while retaining the verified
+  SD PRO pin mapping and EEPROM compatibility; isolate ticker settings in LittleFS.
+
 ### Testing/tooling
+
+- Build named weather/ticker profiles and export both to ignored `dist/` files;
+  fail export when the conservative 1 MiB OTA image ceiling is exceeded.
+- Restore the bundled Inter Tight OFL notice and record the WTFPL ticker source.
+- Repair standalone build/check commands and CI firmware artifact generation.
+- Add native ticker parsing/settings and portal regression tests, and repair
+  warning errors in the existing URL-boundary test harness.
 
 - export successful weather bootstrap builds to `../SDPRO-Weather-Bootstrap.bin`,
   including incremental builds

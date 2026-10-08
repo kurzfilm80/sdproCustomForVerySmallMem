@@ -23,9 +23,16 @@
 #include "fonts/InterTightDigits48.h"
 #include "fonts/InterTightCompact13.h"
 #include "WebAssets.generated.h"
+#ifdef SDPRO_TICKER
+#include "Ticker.h"
+#endif
 
 namespace {
+#ifdef SDPRO_TICKER
+constexpr char kVersion[] = "SDPRO-Ticker-1.0.0";
+#else
 constexpr char kVersion[] = "SeoulWeather-4.0.0";
+#endif
 constexpr uint32_t kConnectTimeoutMs = 20000;
 constexpr uint32_t kServiceIntervalMs = 100;
 constexpr uint16_t kDividerColor = 0x638F;  // Muted blue-grey on black.
@@ -408,7 +415,11 @@ void finishUpdate() {
 }
 
 void configureRoutes() {
+#ifdef SDPRO_TICKER
+  tickerRoutes(server, [] { return authenticated(); });
+#else
   server.on("/", HTTP_GET, sendPage);
+#endif
   server.on("/network", HTTP_GET, sendPage);
   server.on("/update", HTTP_GET, sendPage);
   server.on("/settings", HTTP_POST, saveSettings);
@@ -429,6 +440,7 @@ void configureRoutes() {
   server.begin();
 }
 
+#ifndef SDPRO_TICKER
 // Scale primitives for today and compact forecasts without a sprite or bitmap.
 void drawWeatherIcon(int16_t x, int16_t y, int weatherCode, int16_t size) {
   const auto scale = [size](int16_t v) -> int16_t { return (v * size + 14) / 28; };
@@ -806,8 +818,13 @@ void drawAirQualityPage() {
   }
 }
 
+#endif
+
 // Rendering and page timing never initiate a network request.
 void drawCurrentPage() {
+#ifdef SDPRO_TICKER
+  tickerDraw(display);
+#else
   if (pageCycle.page==ForecastPage::Weather) {
     drawWeatherPage();
     weatherDirty = false;
@@ -815,6 +832,7 @@ void drawCurrentPage() {
     drawAirQualityPage();
     airQualityDirty = false;
   }
+#endif
   drawnPageMinute = time(nullptr) / 60;
   lastDrawAt=millis();
 }
@@ -828,6 +846,9 @@ void setup() {
   loadDeviceConfig(config);
   filesystemReady = LittleFS.begin();
   loadNetworkSettings(networkSettings, filesystemReady);
+#ifdef SDPRO_TICKER
+  tickerLoad(filesystemReady);
+#endif
   loadDisplaySettings(displaySettings, filesystemReady);
   pageCycle.configure(millis(), displaySettings.autoRotate, displaySettings.weatherPageSeconds,
                       displaySettings.airPageSeconds, displaySettings.fixedPage);
@@ -855,10 +876,14 @@ void loop() {
   applyBacklight();
   const bool connected = WiFi.status() == WL_CONNECTED;
   if (pagesStarted && (!accessPointRunning || connected)) {
+#ifdef SDPRO_TICKER
+    if (tickerAdvance(now) || !lastDrawAt) drawCurrentPage();
+#else
     const bool pageChanged = pageCycle.advance(now);
     const bool dirty = pageCycle.page == ForecastPage::Weather
         ? weatherDirty : airQualityDirty;
     if (pageChanged || dirty || time(nullptr) / 60 != drawnPageMinute || !lastDrawAt) drawCurrentPage();
+#endif
   }
   if (!connected) {
     timeConfigured = false;
@@ -893,6 +918,9 @@ void loop() {
     configureTimeService(networkSettings, kDefaultTimezone);
     timeConfigured = true;
   }
+#ifdef SDPRO_TICKER
+  if (tickerPoll(now)) drawCurrentPage();
+#else
   if (weatherRefresh.due(now)) {
     SeoulWeatherDay next[3]{};
     const bool success = fetchSeoulWeather(next, citySettings);
@@ -918,5 +946,6 @@ void loop() {
       if (pageCycle.page == ForecastPage::AirQuality) drawCurrentPage();
     }
   }
+#endif
   delay(10);
 }
