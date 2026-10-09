@@ -8,6 +8,34 @@
   prices, daily changes, bounded sparkline charts and per-position profit/loss.
 - Add a local web ticker editor with persistent settings and manual refresh;
   retain the weather/air-quality firmware and shared Wi-Fi/recovery/OTA controls.
+- Customize ticker display names and select a shared chart period from one day
+  to one year; retain existing settings with symbol labels and a one-day default.
+- Prefix ticker prices with dollar or won signs and remove the chart footer.
+- Display KRW prices and daily change amounts rounded to whole won.
+- Enlarge ticker labels, prices and changes with automatic font fitting; expand
+  charts to the bottom of the panel with a thicker line and extra height when P/L is hidden.
+- Show a small grey chart-period label at the right edge of the centered ticker name row.
+- Use matching 24px name/period labels and prefix absolute daily changes with
+  red upward or blue downward triangles; omit the icon for unchanged or unavailable prices.
+- Use Korean-market red/blue colors for positive/negative changes, graphs and P/L;
+  use grey for unchanged prices and yellow for ticker names.
+- Tighten ticker header and price spacing to expand the graph area while keeping
+  labels centered and preventing text overlap.
+- Show the assigned IP address for five seconds after boot-time Wi-Fi connection
+  in both images while keeping the local web UI, OTA and recovery services responsive.
+
+### Fixes
+
+- Hide daily-change loading and retry messages while fetching the reference quote;
+  show daily amounts once available without interrupting the price or chart.
+- Color daily changes independently from charts; compare the current price with
+  the selected chart period's first available price for graph direction.
+- Continue station reconnection every minute while keeping the recovery AP open
+  after boot-time failures; reset the retry grace period after a healthy connection.
+- Report failed Wi-Fi credential writes instead of acknowledging success and rebooting.
+- Avoid treating a longer chart period's reference price as yesterday's close.
+- Retrieve a separate one-day quote when longer charts omit yesterday's close,
+  restoring daily changes and direction icons while preserving the selected chart.
 
 ### Refactoring
 
@@ -16,6 +44,9 @@
 
 ### Testing/tooling
 
+- Show Wi-Fi configuration and connection diagnostics in the recovery screen and
+  local status endpoint without exposing passwords; record the SDK disconnect
+  reason to help diagnose authentication and association failures.
 - Build named weather/ticker profiles and export both to ignored `dist/` files;
   fail export when the conservative 1 MiB OTA image ceiling is exceeded.
 - Restore the bundled Inter Tight OFL notice and record the WTFPL ticker source.

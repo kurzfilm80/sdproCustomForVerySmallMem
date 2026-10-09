@@ -17,6 +17,7 @@
 #include "ForecastLabels.h"
 #include "DisplaySettings.h"
 #include "ApiRefresh.h"
+#include "WifiRetry.h"
 #include "fonts/InterTightBold18.h"
 #include "fonts/InterTightBold24.h"
 #include "fonts/InterTightBold36.h"
@@ -33,8 +34,8 @@ constexpr char kVersion[] = "SDPRO-Ticker-1.0.0";
 #else
 constexpr char kVersion[] = "SeoulWeather-4.0.0";
 #endif
-constexpr uint32_t kConnectTimeoutMs = 20000;
 constexpr uint32_t kServiceIntervalMs = 100;
+constexpr uint32_t kBootIpDisplayMs = 5000;
 constexpr uint16_t kDividerColor = 0x638F;  // Muted blue-grey on black.
 DeviceConfig config{};
 NetworkSettings networkSettings{};
@@ -65,6 +66,30 @@ uint32_t lastDrawAt = 0;
 uint32_t restartAt = 0;
 PageCycle pageCycle;
 bool pagesStarted = false;
+bool bootIpShown = false;
+uint32_t bootIpShownAt = 0;
+int lastWifiStatus = -1;
+uint8_t lastWifiDisconnectReason = 0;
+WiFiEventHandler wifiDisconnectHandler;
+
+const char *wifiStatusText(int status) {
+  if (!wifiConfigured(config)) return "Wi-Fi not configured";
+  switch (status) {
+    case WL_CONNECTED: return "Wi-Fi connected";
+    case WL_NO_SSID_AVAIL: return "Wi-Fi network not found";
+    case WL_WRONG_PASSWORD: return "Wi-Fi password rejected";
+    case WL_CONNECT_FAILED: return "Wi-Fi connection failed";
+    default: return "Waiting for Wi-Fi / IP";
+  }
+}
+
+void drawRecoveryWifiStatus(int status) {
+  display.fillRect(0, 155, 240, 42, TFT_BLACK);
+  display.setFreeFont(&InterTightBold18);
+  display.setTextDatum(MC_DATUM);
+  display.setTextColor(TFT_WHITE, TFT_BLACK);
+  display.drawString(wifiStatusText(status), 120, 175);
+}
 
 void applyBacklight(bool force = false) {
   const time_t now = time(nullptr);
@@ -136,13 +161,15 @@ void startAccessPoint() {
   accessPointRunning = true;
   dns.start(53, "*", WiFi.softAPIP());
   message(ssid, WiFi.softAPIP().toString());
+  drawRecoveryWifiStatus(WiFi.status());
   Serial.printf("Setup portal: http://%s/\n", WiFi.softAPIP().toString().c_str());
 }
 
 void connectToWiFi() {
-  if (!wifiConfigured(config)) { startAccessPoint(); return; }
   WiFi.persistent(false);
+  if (!wifiConfigured(config)) { startAccessPoint(); return; }
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   // Keep web/OTA latency predictable until sleep is validated on this device.
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   configureIpAddress(networkSettings);
@@ -170,6 +197,12 @@ void sendStatus() {
   doc["longitude"] = citySettings.longitude;
   doc["version"] = kVersion;
   doc["ssid"] = config.ssid;
+  doc["wifiConfigured"] = wifiConfigured(config);
+  doc["wifiConnected"] = WiFi.status() == WL_CONNECTED;
+  doc["wifiStatus"] = static_cast<int>(WiFi.status());
+  doc["wifiStatusText"] = wifiStatusText(WiFi.status());
+  doc["lastWifiDisconnectReason"] = lastWifiDisconnectReason;
+  doc["staticIpEnabled"] = networkSettings.staticIpEnabled;
   doc["hostname"] = configuredHostname(config);
   doc["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   doc["dns"] = WiFi.dnsIP().toString();
@@ -252,7 +285,10 @@ void saveSettings() {
   if (!saveNetworkSettings(network, filesystemReady)) {
     server.send(500, "text/plain", "Could not save network settings"); return;
   }
-  saveDeviceConfig(next);
+  if (!saveDeviceConfig(next)) {
+    server.send(500, "text/plain", "Could not save Wi-Fi settings. Device has not restarted; please retry.");
+    return;
+  }
   config = next;
   server.send(200, "text/plain", "Settings saved. Restarting...");
   restartAt = millis() + 500;
@@ -843,6 +879,10 @@ void drawCurrentPage() {
 void setup() {
   Serial.begin(115200);
   Serial.printf("\n%s SD PRO ESP8266\n", kVersion);
+  wifiDisconnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &event) {
+    lastWifiDisconnectReason = event.reason;
+    Serial.printf("Wi-Fi disconnect reason: %u\n", event.reason);
+  });
   loadDeviceConfig(config);
   filesystemReady = LittleFS.begin();
   loadNetworkSettings(networkSettings, filesystemReady);
@@ -874,7 +914,13 @@ void loop() {
   }
   lastServiceAt = now;
   applyBacklight();
-  const bool connected = WiFi.status() == WL_CONNECTED;
+  const int wifiStatus = WiFi.status();
+  if (wifiStatus != lastWifiStatus) {
+    lastWifiStatus = wifiStatus;
+    Serial.printf("Wi-Fi status: %s (%d)\n", wifiStatusText(wifiStatus), wifiStatus);
+    if (accessPointRunning) drawRecoveryWifiStatus(wifiStatus);
+  }
+  const bool connected = wifiStatus == WL_CONNECTED;
   if (pagesStarted && (!accessPointRunning || connected)) {
 #ifdef SDPRO_TICKER
     if (tickerAdvance(now) || !lastDrawAt) drawCurrentPage();
@@ -887,14 +933,22 @@ void loop() {
   }
   if (!connected) {
     timeConfigured = false;
-    if (wifiConfigured(config) && now - connectStartedAt >= kConnectTimeoutMs) {
-      const uint8_t limit = config.wifiRetryLimit ? config.wifiRetryLimit : kDefaultWifiRetryLimit;
-      if (wifiAttemptCount >= limit) startAccessPoint();
-      else {
-        ++wifiAttemptCount;
-        WiFi.disconnect();
+    if (bootIpShown && !pagesStarted) {
+      bootIpShown = false;
+      message("Connecting Wi-Fi", config.ssid);
+    }
+    const uint8_t limit = config.wifiRetryLimit ? config.wifiRetryLimit : kDefaultWifiRetryLimit;
+    const auto retry = wifiRetryAction(now, connectStartedAt, wifiConfigured(config),
+                                      wifiAttemptCount, limit, accessPointRunning);
+    if (retry != WifiRetryAction::None) {
+      if (retry == WifiRetryAction::StartRecovery) startAccessPoint();
+      if (retry == WifiRetryAction::Retry || !accessPointRunning) {
+        if (wifiAttemptCount < limit) ++wifiAttemptCount;
+        // Retain credentials and the recovery AP when restarting station mode.
+        WiFi.disconnect(false, false);
         WiFi.begin(config.ssid, config.wifiPassword);
-        message("Retrying Wi-Fi", config.ssid);
+        if (accessPointRunning) drawRecoveryWifiStatus(WiFi.status());
+        else message("Retrying Wi-Fi", config.ssid);
       }
       connectStartedAt = now;
     }
@@ -909,7 +963,20 @@ void loop() {
     weatherDirty = airQualityDirty = true;
   }
   wifiAttemptCount = 0;
+  // A later outage gets its own connection grace period, independent of uptime.
+  connectStartedAt = now;
   if (!pagesStarted) {
+    if (!bootIpShown) {
+      message("Wi-Fi connected", WiFi.localIP().toString());
+      bootIpShownAt = now;
+      bootIpShown = true;
+    }
+    // Keep the address readable before rendering or a blocking API fetch.
+    // HTTP, OTA and recovery servicing continue at the top of each loop.
+    if (now - bootIpShownAt < kBootIpDisplayMs) {
+      delay(10);
+      return;
+    }
     pagesStarted = true;
     pageCycle.begin(now);
     drawCurrentPage();

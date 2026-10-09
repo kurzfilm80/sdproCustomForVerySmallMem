@@ -7,10 +7,12 @@ inline void encodeTickerSettings(JsonObject root, const TickerSettings &s) {
   root["schemaVersion"] = 1;
   root["rotateSeconds"] = s.rotateSeconds;
   root["refreshSeconds"] = s.refreshSeconds;
+  root["graphRange"] = s.graphRange;
   JsonArray positions = root.createNestedArray("positions");
   for (uint8_t i = 0; i < s.count; ++i) {
     JsonObject p = positions.createNestedObject();
     p["symbol"] = s.positions[i].symbol;
+    p["name"] = s.positions[i].name;
     p["quantity"] = s.positions[i].quantity;
     p["cost"] = s.positions[i].cost;
   }
@@ -21,6 +23,11 @@ inline bool decodeTickerSettings(JsonObjectConst root, TickerSettings &s, bool &
       (!root["schemaVersion"].is<unsigned>() || root["schemaVersion"].as<unsigned>() != 1)) return false;
   repaired = !root.containsKey("schemaVersion");
   s = TickerSettings{};
+  if (root.containsKey("graphRange")) {
+    const char *range = root["graphRange"] | "";
+    if (tickerGraphPeriod(range)) std::memcpy(s.graphRange, range, std::strlen(range) + 1);
+    else repaired = true;
+  }
   const unsigned rotation = root["rotateSeconds"] | 10U;
   const unsigned refresh = root["refreshSeconds"] | 300U;
   if (root["rotateSeconds"].is<unsigned>() && rotation >= 3 && rotation <= 120) s.rotateSeconds = rotation;
@@ -37,6 +44,11 @@ inline bool decodeTickerSettings(JsonObjectConst root, TickerSettings &s, bool &
     }
     TickerPosition &p = s.positions[s.count++];
     std::memcpy(p.symbol, symbol, std::strlen(symbol) + 1);
+    if (v.containsKey("name")) {
+      const char *name = v["name"].is<const char *>() ? v["name"].as<const char *>() : nullptr;
+      if (tickerNameValid(name)) std::memcpy(p.name, name, std::strlen(name) + 1);
+      else repaired = true;
+    }
     for (const char *field : {"quantity", "cost"}) {
       const float n = v[field] | 0.0f;
       if (!v[field].is<float>() || !tickerNumberValid(n)) { repaired = true; continue; }
@@ -48,7 +60,7 @@ inline bool decodeTickerSettings(JsonObjectConst root, TickerSettings &s, bool &
 // Adapted from upstream parseYahoo: filter fields, retain finite closes,
 // downsample to a fixed array, and derive daily change from previous close.
 template <typename Input>
-inline bool parseTickerYahoo(Input &stream, TickerQuote &q) {
+inline bool parseTickerYahoo(Input &stream, TickerQuote &q, bool dailyRange = true) {
   StaticJsonDocument<512> filter;
   auto meta = filter["chart"]["result"][0]["meta"].to<JsonObject>();
   meta["regularMarketPrice"] = true;
@@ -66,7 +78,9 @@ inline bool parseTickerYahoo(Input &stream, TickerQuote &q) {
   q.price = price;
   const char *currency = m["currency"] | "";
   std::snprintf(q.currency, sizeof(q.currency), "%s", currency);
-  const float previous = m["chartPreviousClose"] | (m["previousClose"] | 0.0f);
+  // For longer charts, chartPreviousClose is the range's opening reference,
+  // not yesterday's close. Do not report it as a daily price change.
+  const float previous = m["previousClose"] | (dailyRange ? (m["chartPreviousClose"] | 0.0f) : 0.0f);
   q.hasChange = tickerNumberValid(previous) && previous > 0;
   q.change = q.hasChange ? price - previous : 0;
   q.percent = q.hasChange ? q.change / previous * 100 : 0;

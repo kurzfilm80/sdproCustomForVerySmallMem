@@ -47,7 +47,7 @@ struct NetworkSettings {
 bool deviceConfigValid(const DeviceConfig &config);
 bool wifiConfigured(const DeviceConfig &config);
 void loadDeviceConfig(DeviceConfig &config);
-void saveDeviceConfig(DeviceConfig &config);
+bool saveDeviceConfig(DeviceConfig &config);
 bool eraseDeviceConfig();
 
 void loadNetworkSettings(NetworkSettings &settings, bool filesystemReady);

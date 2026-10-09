@@ -37,11 +37,51 @@ The earlier user's lean BIN was not available in this checkout, so exact binary
 feature parity with that historical artifact is not established.
 
 This memory-bounded port supports up to 8 Yahoo symbols (stocks, ETFs, crypto,
-FX), daily price/change, a 1-day chart with at most 32 samples, quantity/unit cost
+FX), current price/daily change, a selectable chart with at most 32 samples, quantity/unit cost
 and per-position P/L percentage. It uses 3–120 second rotation and 60–3600 second
 per-symbol refresh, alternating Yahoo mirrors on retries. Cached quotes survive
-transient errors in RAM and are labeled STALE; prices are not persisted across
+transient errors in RAM and are labeled STALE in the web quotes table; prices are not persisted across
 power loss. Settings survive reboot and OTA. No API key is required.
+
+Each position may have an optional printable ASCII display name of up to 23
+characters. A blank name uses its symbol; long display labels are shortened with
+an ellipsis to fit the panel. USD and KRW prices use prefixed dollar/won signs.
+The won sign reuses the bundled Latin W glyph with two horizontal strokes.
+The display omits the position/source/range footer; diagnostics remain in the web UI.
+The selected period (`1D`, `5D`, `1M`, `3M`, `6M` or `1Y`) appears in grey
+text at the right edge of the name row. The yellow name stays centered on the
+panel, shortening as needed to keep clear of the period label.
+Name and period labels share the 24px font; numeric prices start at 48px, shrinking to fit long values.
+Changes and P/L start at 24px. Charts span nearly the full panel width with a
+two-pixel line; their height grows when no position P/L is shown. Flat charts
+are centered vertically.
+Compact header and price spacing gives charts a 119px-high area without P/L,
+or 91px with P/L, including their two-pixel stroke.
+An unusually long change amount/percentage pair falls back to the percentage
+alone so it remains within the screen.
+The daily-change row stays blank while its reference quote is loading or retrying,
+then shows the amount and percentage when available.
+
+KRW prices and daily change amounts are rounded to whole won without decimals;
+percentage formatting is unchanged.
+
+Daily changes show absolute amounts and percentages after a red upward or blue
+downward triangle. Zero or unavailable changes have no direction icon.
+Changes, graphs and P/L use red for gains, blue for losses and grey for no change.
+Daily change colors compare against yesterday's close independently of graph colors,
+which compare the current price against the selected period's first available price.
+
+Graph period is shared by all positions: 1 day (30-minute samples), 5 days
+(hourly), 1 month and 3 months (daily), or 6 months and 1 year (weekly).
+Weekly intervals bound the filtered JSON size on the ESP8266. A daily change is
+shown only when Yahoo supplies a daily previous close; the chart-period baseline
+is not used as yesterday's price on longer charts. When daily change is unavailable,
+chart color reflects movement from its first to last sample. If a longer chart
+omits yesterday's close, a separate one-day quote is queued for a later loop.
+It updates the price and daily change without replacing the selected chart.
+The extra request runs separately, retains the chart on failure, and uses the
+same bounded retry policy. `hasChange` and `dailyPending` expose this state in
+the quotes API.
 
 The entire upstream multi-mode firmware is not imported. Upstream cash.ch,
 custom-webhook feeds, arbitrary chart ranges, aggregated portfolio page, advanced
@@ -70,7 +110,7 @@ this is a trusted-LAN device, not an Internet-facing service.
 - `POST /api/v1/tickers/refresh`: queue a refresh; one symbol is fetched per loop.
 
 ```json
-{"schemaVersion":1,"rotateSeconds":10,"refreshSeconds":300,"positions":[{"symbol":"AAPL","quantity":2,"cost":150},{"symbol":"BTC-USD","quantity":0,"cost":0}]}
+{"schemaVersion":1,"rotateSeconds":10,"refreshSeconds":300,"graphRange":"1mo","positions":[{"symbol":"AAPL","name":"Apple","quantity":2,"cost":150},{"symbol":"BTC-USD","name":"Bitcoin","quantity":0,"cost":0}]}
 ```
 
 Settings are stored in `/ticker-settings.json` through temporary-file replacement.
@@ -81,6 +121,10 @@ POST rejects invalid fields, duplicates or excessive positions instead of silent
 losing user input. Empty positions are supported. Quantity/cost must be finite
 numbers from 0 to 1e9; accepted symbols are uppercase ASCII letters, digits,
 `.-^=_`, with 1–23 bytes. Unknown additive JSON fields are ignored.
+Optional `name` and `graphRange` are additive schema-1 fields. Existing files
+without them retain symbol labels and the `1d` default. Invalid names and ranges
+are repaired independently on load and rejected on POST. Supported `graphRange`
+values are `1d`, `5d`, `1mo`, `3mo`, `6mo` and `1y`.
 
 ## OTA acceptance procedure (requires user approval before upload)
 
@@ -101,7 +145,8 @@ on the device's LAN. Obtain approval for the exact device and exact image first.
    display rotation, chart, price and stored settings after a power cycle.
 5. Test an invalid symbol (e.g. NO_SUCH_SYMBOL_TEST): HTTP/JSON failure should
    show retry state without reboot. Temporarily disrupt Internet access after
-   obtaining a quote: the cached price must show STALE, then recover.
+   obtaining a quote: the cached price remains and the web table shows STALE,
+   then recovers.
 6. Observe free heap, maximum block and HTTP availability for at least 30 minutes
    with 8 symbols. Record minimum heap and any watchdog/reset reason. Test OTA
    authorization failures, interrupted upload and retry without losing the portal.

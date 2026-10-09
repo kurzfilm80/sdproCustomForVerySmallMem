@@ -63,6 +63,19 @@ LittleFS `/network.json` continue to load. No filesystem formatting is used.
 Without credentials, or after repeated Wi-Fi connection failures, connect to
 `SDPRO-Setup-<device ID>` and open `http://192.168.4.1/`.
 The portal includes captive DNS and uses the saved recovery AP password when set.
+After the initial three 20-second connection attempts, recovery AP mode continues
+station retries every 60 seconds without clearing credentials or closing the portal.
+Later Wi-Fi outages get a fresh 20-second grace period; SDK automatic reconnect
+is enabled explicitly rather than relying on settings retained from older firmware.
+The setup screen shows the station connection state below the AP address. A
+setup AP address is not evidence of a connection to the router. The local
+`/api/v1/status` endpoint reports `wifiConfigured`, `wifiConnected`,
+`wifiStatusText` and `staticIpEnabled` without returning Wi-Fi passwords.
+`lastWifiDisconnectReason` reports the most recent SDK disconnect reason code
+(zero before any event); it is also logged over serial without credentials.
+If setup reappears after saving, check whether the save response reports an error
+and whether the status indicates a missing network, a rejected password or a
+connection failure. For a new router, select DHCP to clear a retained static IP.
 
 The lightweight page replaces the previous dashboard application. It provides
 Wi-Fi settings, NTP server, recovery AP password, admin credentials, brightness
