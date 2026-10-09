@@ -152,9 +152,17 @@ delay does not add a long web/OTA stall. API clients and JSON documents have loc
 lifetimes, HTTP reuse is disabled and `http.end()` closes completed requests.
 
 Normal operation uses WIFI_STA; a recovered station stops soft AP and DNS.
-There are no explicit Wi-Fi scans. WIFI_NONE_SLEEP remains explicit for stability;
-modem sleep is available in the pinned SDK but needs physical web/OTA/NTP tests
-before enabling. `delay()` yields to the SDK but is not a guarantee of CPU sleep.
+There are no explicit Wi-Fi scans. Connected station idle uses WIFI_MODEM_SLEEP
+with listen interval 0 (every router DTIM). Reconnection, recovery AP, HTTPS transfers and OTA use WIFI_NONE_SLEEP;
+failed or aborted transfers restore the appropriate idle mode automatically.
+Sleep can increase incoming web latency and must be tested with the target router.
+The existing `/api/v1/status` `wifiSleep` field reports the actual SDK mode.
+Before deployment, compare USB input current at the same brightness and router
+with the previous image after initial API fetches finish. Verify repeated portal
+loads, NTP sync, weather/ticker refreshes, router loss/recovery and successful
+and aborted OTA uploads. Confirm `wifiSleep` is 2 (modem) when idle and 0 (none)
+in the recovery AP. Savings are unmeasured until this device check is complete.
+`delay()` yields to the SDK but is not a guarantee of CPU sleep.
 GPIO5 PWM is active LOW as confirmed in the existing SD PRO pinout record and
 platform profile; 80% brightness writes 20/100 duty at 1kHz. The display form
 offers 20/40/60/80/100%; older saved 0–100% values remain valid and appear as
@@ -197,7 +205,7 @@ Timers use unsigned elapsed millis and reset on saving display preferences.
 
 Day brightness defaults 80%, with 20/40/60/80/100% choices. Night Mode defaults
 OFF, with start 22:00, end 07:00 and 30% night brightness; night choices are
-20/30/40/50%. Start is inclusive and end exclusive, including across midnight.
+10/20/30/40/50%. Start is inclusive and end exclusive, including across midnight.
 Equal times mean no night interval. Without a valid NTP clock, normal brightness
 applies. The loop checks brightness once per changed clock minute and writes PWM
 only when the effective brightness changes; no redraw or filesystem access is

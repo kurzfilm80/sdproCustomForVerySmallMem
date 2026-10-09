@@ -16,13 +16,14 @@ out = root / '.cache/tests'
 out.mkdir(parents=True, exist_ok=True)
 # LeakSanitizer cannot enumerate processes in the managed execution sandbox.
 env = dict(os.environ, ASAN_OPTIONS='detect_leaks=0')
-for name in ['ticker', 'wifi_retry', 'time_format', 'forecast_labels', 'air_quality', 'api_refresh', 'display_settings', 'city_settings', 'stored_config']:
+for name in ['wifi_power', 'ticker', 'wifi_retry', 'time_format', 'forecast_labels', 'air_quality', 'api_refresh', 'display_settings', 'city_settings', 'stored_config']:
     binary = out / name
     sources = [str(firmware / f'tests/{name}_test.cpp')]
     if name in ['stored_config', 'display_settings', 'city_settings']:
         sources.append(str(firmware / 'src/StoredConfig.cpp'))
+    extra_includes = ['-I', str(firmware / 'tests/power_stubs')] if name == 'wifi_power' else []
     subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-g',
-                    '-I', str(firmware / 'src'), '-I', str(headers), *sources, '-o', str(binary)], check=True)
+                    *extra_includes, '-I', str(firmware / 'src'), '-I', str(headers), *sources, '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env=env)
     print(f'PASS: {name}', flush=True)
 for script in ['city_portal_test.cjs', 'ticker_portal_test.cjs']:

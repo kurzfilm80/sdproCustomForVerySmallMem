@@ -18,6 +18,7 @@
 #include "DisplaySettings.h"
 #include "ApiRefresh.h"
 #include "WifiRetry.h"
+#include "WifiPower.h"
 #include "fonts/InterTightBold18.h"
 #include "fonts/InterTightBold24.h"
 #include "fonts/InterTightBold36.h"
@@ -152,6 +153,7 @@ bool authenticated(bool ota = false) {
 
 void startAccessPoint() {
   if (accessPointRunning) return;
+  applyWifiPower(true);
   WiFi.mode(wifiConfigured(config) ? WIFI_AP_STA : WIFI_AP);
   const String ssid = "SDPRO-Setup-" + deviceSuffix();
   const bool started = networkSettings.recoveryPassword[0]
@@ -170,8 +172,7 @@ void connectToWiFi() {
   if (!wifiConfigured(config)) { startAccessPoint(); return; }
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  // Keep web/OTA latency predictable until sleep is validated on this device.
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  applyWifiPower(true);
   configureIpAddress(networkSettings);
   WiFi.hostname(configuredHostname(config).c_str());
   WiFi.begin(config.ssid, config.wifiPassword);
@@ -408,6 +409,7 @@ void setBrightness() {
 
 void resumeAfterUpdateFailure() {
   updating = false;
+  applyWifiPower();
   timeConfigured = false;
   lastDrawAt = 0;
   weatherDirty = airQualityDirty = true;
@@ -421,6 +423,7 @@ void receiveUpdate() {
     uploadStarted = uploadSucceeded = false;
     if (!authenticated(true)) return;
     updating = true;
+    applyWifiPower(true);
     message("Firmware update", "Do not power off");
     WiFiUDP::stopAll();
     uploadStarted = Update.begin(ESP.getFreeSketchSpace() & 0xFFFFF000);
@@ -625,7 +628,10 @@ ForecastDate displayForecastDate(int &weekday) {
 // Baseline datums and transparent GFX text prevent adjacent text erasure.
 uint8_t fitTextFont(const char *text, int16_t width, uint8_t maximum = 24) {
   uint8_t selected = maximum;
-  display.setFreeFont(maximum == 48 ? &InterTightDigits48 : maximum == 36 ? &InterTightBold36 : &InterTightBold24);
+  display.setFreeFont(maximum == 48 ? &InterTightDigits48 :
+                      maximum == 36 ? &InterTightBold36 :
+                      maximum == 24 ? &InterTightBold24 :
+                      maximum == 18 ? &InterTightBold18 : &InterTightCompact13);
   if (display.textWidth(text) > width && maximum == 48) { display.setFreeFont(&InterTightBold36); selected = 36; }
   if (display.textWidth(text) > width && maximum >= 36) { display.setFreeFont(&InterTightBold24); selected = 24; }
   if (display.textWidth(text) > width) { display.setFreeFont(&InterTightBold18); selected = 18; }
@@ -739,8 +745,10 @@ void drawGradeBadge(int16_t center, int16_t top, int16_t width,
                         height >= 20 ? 6 : 4, color);
   display.setTextColor(TFT_BLACK);
   display.setTextDatum(C_BASELINE);
-  fitTextFont(label, width - 6, height >= 20 ? 18 : 13);
-  display.drawString(label, center, top + height - (height >= 20 ? 4 : 3));
+  const uint8_t size = fitTextFont(label, width - 6, height >= 20 ? 18 : 13);
+  // Built-in GLCD has no baseline metric; center its 8px cell from the top.
+  if (size == 6) display.setTextDatum(TC_DATUM);
+  display.drawString(label, center, size == 6 ? top + (height - 8)/2 : top + height - 4);
 }
 
 void drawWeatherPage() {
@@ -903,6 +911,7 @@ void setup() {
 }
 
 void loop() {
+  applyWifiPower(updating || restartAt);
   server.handleClient();
   if (accessPointRunning) dns.processNextRequest();
   const uint32_t now = millis();
@@ -945,6 +954,7 @@ void loop() {
       if (retry == WifiRetryAction::Retry || !accessPointRunning) {
         if (wifiAttemptCount < limit) ++wifiAttemptCount;
         // Retain credentials and the recovery AP when restarting station mode.
+        applyWifiPower(true);
         WiFi.disconnect(false, false);
         WiFi.begin(config.ssid, config.wifiPassword);
         if (accessPointRunning) drawRecoveryWifiStatus(WiFi.status());

@@ -4,6 +4,9 @@
 
 ### Features
 
+- Add 10% night brightness to display settings while retaining saved brightness
+  and night schedules.
+
 - Add a separate SD PRO ticker image with up to eight Yahoo Finance symbols,
   prices, daily changes, bounded sparkline charts and per-position profit/loss.
 - Add a local web ticker editor with persistent settings and manual refresh;
@@ -26,6 +29,11 @@
 
 ### Fixes
 
+- Respect the requested font size for air-quality grade badges and precipitation
+  percentages; prevent short labels such as BAD from using oversized 24px text.
+  Keep compact badges within the bottom display margin and center the built-in
+  font fallback for long grade labels.
+
 - Hide daily-change loading and retry messages while fetching the reference quote;
   show daily amounts once available without interrupting the price or chart.
 - Color daily changes independently from charts; compare the current price with
@@ -39,10 +47,17 @@
 
 ### Refactoring
 
+- Enable DTIM-based Wi-Fi modem sleep while connected and idle in both images;
+  keep reconnection, recovery AP, HTTPS transfers and OTA awake and restore
+  idle power policy after transfer failures.
+
 - Select weather or ticker rendering at compile time while retaining the verified
   SD PRO pin mapping and EEPROM compatibility; isolate ticker settings in LittleFS.
 
 ### Testing/tooling
+
+- Cover idle Wi-Fi power transitions, transfer-error restoration, disconnection,
+  recovery AP, OTA activity and SDK mode-change failures with native tests.
 
 - Show Wi-Fi configuration and connection diagnostics in the recovery screen and
   local status endpoint without exposing passwords; record the SDK disconnect

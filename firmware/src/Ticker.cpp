@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
+#include "WifiPower.h"
 #include <LittleFS.h>
 #include "TickerAssets.generated.h"
 #include "fonts/InterTightBold18.h"
@@ -63,6 +64,7 @@ bool fetch(uint8_t index) {
   // Full TLS receive buffer is retained: Yahoo MFLN support is not assumed.
   // Never start a handshake on a fragmented/low heap.
   if (ESP.getFreeHeap() < 30000 || ESP.getMaxFreeBlockSize() < 20000) { q.httpCode = -100; return false; }
+  ActiveWifiTransfer activeTransfer;
   BearSSL::WiFiClientSecure client;
   client.setInsecure(); // Same public-price threat model as upstream; see docs.
   client.setTimeout(6000);

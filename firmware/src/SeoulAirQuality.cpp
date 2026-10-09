@@ -3,6 +3,7 @@
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecureBearSSL.h>
+#include "WifiPower.h"
 
 int airQualityLastHttpCode = 0;
 const char *airQualityLastError = "Not requested";
@@ -21,6 +22,7 @@ bool fetchSeoulAirQuality(SeoulAirQuality &out, const CitySettings &city) {
   Serial.printf("Air quality heap=%u maxBlock=%u\n",
                 ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
   // Local lifetime releases all TLS buffers before the next API request.
+  ActiveWifiTransfer activeTransfer;
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(12000);
