@@ -2,7 +2,76 @@
 
 ## Unreleased
 
+### Features
+
+- Add 10% night brightness to display settings while retaining saved brightness
+  and night schedules.
+
+- Add a separate SD PRO ticker image with up to eight Yahoo Finance symbols,
+  prices, daily changes, bounded sparkline charts and per-position profit/loss.
+- Add a local web ticker editor with persistent settings and manual refresh;
+  retain the weather/air-quality firmware and shared Wi-Fi/recovery/OTA controls.
+- Customize ticker display names and select a shared chart period from one day
+  to one year; retain existing settings with symbol labels and a one-day default.
+- Prefix ticker prices with dollar or won signs and remove the chart footer.
+- Display KRW prices and daily change amounts rounded to whole won.
+- Enlarge ticker labels, prices and changes with automatic font fitting; expand
+  charts to the bottom of the panel with a thicker line and extra height when P/L is hidden.
+- Show a small grey chart-period label at the right edge of the centered ticker name row.
+- Use matching 24px name/period labels and prefix absolute daily changes with
+  red upward or blue downward triangles; omit the icon for unchanged or unavailable prices.
+- Use Korean-market red/blue colors for positive/negative changes, graphs and P/L;
+  use grey for unchanged prices and yellow for ticker names.
+- Tighten ticker header and price spacing to expand the graph area while keeping
+  labels centered and preventing text overlap.
+- Show the assigned IP address for five seconds after boot-time Wi-Fi connection
+  in both images while keeping the local web UI, OTA and recovery services responsive.
+
+### Fixes
+
+- Respect the requested font size for air-quality grade badges and precipitation
+  percentages; prevent short labels such as BAD from using oversized 24px text.
+  Keep compact badges within the bottom display margin and center the built-in
+  font fallback for long grade labels.
+
+- Hide daily-change loading and retry messages while fetching the reference quote;
+  show daily amounts once available without interrupting the price or chart.
+- Color daily changes independently from charts; compare the current price with
+  the selected chart period's first available price for graph direction.
+- Continue station reconnection every minute while keeping the recovery AP open
+  after boot-time failures; reset the retry grace period after a healthy connection.
+- Report failed Wi-Fi credential writes instead of acknowledging success and rebooting.
+- Avoid treating a longer chart period's reference price as yesterday's close.
+- Retrieve a separate one-day quote when longer charts omit yesterday's close,
+  restoring daily changes and direction icons while preserving the selected chart.
+
+### Refactoring
+
+- Enable DTIM-based Wi-Fi modem sleep while connected and idle in both images;
+  keep reconnection, recovery AP, HTTPS transfers and OTA awake and restore
+  idle power policy after transfer failures.
+
+- Select weather or ticker rendering at compile time while retaining the verified
+  SD PRO pin mapping and EEPROM compatibility; isolate ticker settings in LittleFS.
+
 ### Testing/tooling
+
+- Cover idle Wi-Fi power transitions, transfer-error restoration, disconnection,
+  recovery AP, OTA activity and SDK mode-change failures with native tests.
+
+- Show Wi-Fi configuration and connection diagnostics in the recovery screen and
+  local status endpoint without exposing passwords; record the SDK disconnect
+  reason to help diagnose authentication and association failures.
+- Build named weather/ticker profiles and export both to ignored `dist/` files;
+  fail export when the conservative 1 MiB OTA image ceiling is exceeded.
+- Restore the bundled Inter Tight OFL notice and record the WTFPL ticker source.
+- Repair standalone build/check commands and CI firmware artifact generation.
+- Use committed HA preview font data instead of invoking a removed generator.
+- Validate ticker symbols with modern browser Unicode pattern semantics.
+- Replace obsolete notification-portal CI checks with real browser coverage of
+  ticker registration, storage failures and mobile layout.
+- Add native ticker parsing/settings and portal regression tests, and repair
+  warning errors in the existing URL-boundary test harness.
 
 - export successful weather bootstrap builds to `../SDPRO-Weather-Bootstrap.bin`,
   including incremental builds

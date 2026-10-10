@@ -17,17 +17,26 @@
 #include "ForecastLabels.h"
 #include "DisplaySettings.h"
 #include "ApiRefresh.h"
+#include "WifiRetry.h"
+#include "WifiPower.h"
 #include "fonts/InterTightBold18.h"
 #include "fonts/InterTightBold24.h"
 #include "fonts/InterTightBold36.h"
 #include "fonts/InterTightDigits48.h"
 #include "fonts/InterTightCompact13.h"
 #include "WebAssets.generated.h"
+#ifdef SDPRO_TICKER
+#include "Ticker.h"
+#endif
 
 namespace {
+#ifdef SDPRO_TICKER
+constexpr char kVersion[] = "SDPRO-Ticker-1.0.0";
+#else
 constexpr char kVersion[] = "SeoulWeather-4.0.0";
-constexpr uint32_t kConnectTimeoutMs = 20000;
+#endif
 constexpr uint32_t kServiceIntervalMs = 100;
+constexpr uint32_t kBootIpDisplayMs = 5000;
 constexpr uint16_t kDividerColor = 0x638F;  // Muted blue-grey on black.
 DeviceConfig config{};
 NetworkSettings networkSettings{};
@@ -58,6 +67,30 @@ uint32_t lastDrawAt = 0;
 uint32_t restartAt = 0;
 PageCycle pageCycle;
 bool pagesStarted = false;
+bool bootIpShown = false;
+uint32_t bootIpShownAt = 0;
+int lastWifiStatus = -1;
+uint8_t lastWifiDisconnectReason = 0;
+WiFiEventHandler wifiDisconnectHandler;
+
+const char *wifiStatusText(int status) {
+  if (!wifiConfigured(config)) return "Wi-Fi not configured";
+  switch (status) {
+    case WL_CONNECTED: return "Wi-Fi connected";
+    case WL_NO_SSID_AVAIL: return "Wi-Fi network not found";
+    case WL_WRONG_PASSWORD: return "Wi-Fi password rejected";
+    case WL_CONNECT_FAILED: return "Wi-Fi connection failed";
+    default: return "Waiting for Wi-Fi / IP";
+  }
+}
+
+void drawRecoveryWifiStatus(int status) {
+  display.fillRect(0, 155, 240, 42, TFT_BLACK);
+  display.setFreeFont(&InterTightBold18);
+  display.setTextDatum(MC_DATUM);
+  display.setTextColor(TFT_WHITE, TFT_BLACK);
+  display.drawString(wifiStatusText(status), 120, 175);
+}
 
 void applyBacklight(bool force = false) {
   const time_t now = time(nullptr);
@@ -120,6 +153,7 @@ bool authenticated(bool ota = false) {
 
 void startAccessPoint() {
   if (accessPointRunning) return;
+  applyWifiPower(true);
   WiFi.mode(wifiConfigured(config) ? WIFI_AP_STA : WIFI_AP);
   const String ssid = "SDPRO-Setup-" + deviceSuffix();
   const bool started = networkSettings.recoveryPassword[0]
@@ -129,15 +163,16 @@ void startAccessPoint() {
   accessPointRunning = true;
   dns.start(53, "*", WiFi.softAPIP());
   message(ssid, WiFi.softAPIP().toString());
+  drawRecoveryWifiStatus(WiFi.status());
   Serial.printf("Setup portal: http://%s/\n", WiFi.softAPIP().toString().c_str());
 }
 
 void connectToWiFi() {
-  if (!wifiConfigured(config)) { startAccessPoint(); return; }
   WiFi.persistent(false);
+  if (!wifiConfigured(config)) { startAccessPoint(); return; }
   WiFi.mode(WIFI_STA);
-  // Keep web/OTA latency predictable until sleep is validated on this device.
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setAutoReconnect(true);
+  applyWifiPower(true);
   configureIpAddress(networkSettings);
   WiFi.hostname(configuredHostname(config).c_str());
   WiFi.begin(config.ssid, config.wifiPassword);
@@ -163,6 +198,12 @@ void sendStatus() {
   doc["longitude"] = citySettings.longitude;
   doc["version"] = kVersion;
   doc["ssid"] = config.ssid;
+  doc["wifiConfigured"] = wifiConfigured(config);
+  doc["wifiConnected"] = WiFi.status() == WL_CONNECTED;
+  doc["wifiStatus"] = static_cast<int>(WiFi.status());
+  doc["wifiStatusText"] = wifiStatusText(WiFi.status());
+  doc["lastWifiDisconnectReason"] = lastWifiDisconnectReason;
+  doc["staticIpEnabled"] = networkSettings.staticIpEnabled;
   doc["hostname"] = configuredHostname(config);
   doc["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   doc["dns"] = WiFi.dnsIP().toString();
@@ -245,7 +286,10 @@ void saveSettings() {
   if (!saveNetworkSettings(network, filesystemReady)) {
     server.send(500, "text/plain", "Could not save network settings"); return;
   }
-  saveDeviceConfig(next);
+  if (!saveDeviceConfig(next)) {
+    server.send(500, "text/plain", "Could not save Wi-Fi settings. Device has not restarted; please retry.");
+    return;
+  }
   config = next;
   server.send(200, "text/plain", "Settings saved. Restarting...");
   restartAt = millis() + 500;
@@ -365,6 +409,7 @@ void setBrightness() {
 
 void resumeAfterUpdateFailure() {
   updating = false;
+  applyWifiPower();
   timeConfigured = false;
   lastDrawAt = 0;
   weatherDirty = airQualityDirty = true;
@@ -378,6 +423,7 @@ void receiveUpdate() {
     uploadStarted = uploadSucceeded = false;
     if (!authenticated(true)) return;
     updating = true;
+    applyWifiPower(true);
     message("Firmware update", "Do not power off");
     WiFiUDP::stopAll();
     uploadStarted = Update.begin(ESP.getFreeSketchSpace() & 0xFFFFF000);
@@ -408,7 +454,11 @@ void finishUpdate() {
 }
 
 void configureRoutes() {
+#ifdef SDPRO_TICKER
+  tickerRoutes(server, [] { return authenticated(); });
+#else
   server.on("/", HTTP_GET, sendPage);
+#endif
   server.on("/network", HTTP_GET, sendPage);
   server.on("/update", HTTP_GET, sendPage);
   server.on("/settings", HTTP_POST, saveSettings);
@@ -429,6 +479,7 @@ void configureRoutes() {
   server.begin();
 }
 
+#ifndef SDPRO_TICKER
 // Scale primitives for today and compact forecasts without a sprite or bitmap.
 void drawWeatherIcon(int16_t x, int16_t y, int weatherCode, int16_t size) {
   const auto scale = [size](int16_t v) -> int16_t { return (v * size + 14) / 28; };
@@ -577,7 +628,10 @@ ForecastDate displayForecastDate(int &weekday) {
 // Baseline datums and transparent GFX text prevent adjacent text erasure.
 uint8_t fitTextFont(const char *text, int16_t width, uint8_t maximum = 24) {
   uint8_t selected = maximum;
-  display.setFreeFont(maximum == 48 ? &InterTightDigits48 : maximum == 36 ? &InterTightBold36 : &InterTightBold24);
+  display.setFreeFont(maximum == 48 ? &InterTightDigits48 :
+                      maximum == 36 ? &InterTightBold36 :
+                      maximum == 24 ? &InterTightBold24 :
+                      maximum == 18 ? &InterTightBold18 : &InterTightCompact13);
   if (display.textWidth(text) > width && maximum == 48) { display.setFreeFont(&InterTightBold36); selected = 36; }
   if (display.textWidth(text) > width && maximum >= 36) { display.setFreeFont(&InterTightBold24); selected = 24; }
   if (display.textWidth(text) > width) { display.setFreeFont(&InterTightBold18); selected = 18; }
@@ -691,8 +745,10 @@ void drawGradeBadge(int16_t center, int16_t top, int16_t width,
                         height >= 20 ? 6 : 4, color);
   display.setTextColor(TFT_BLACK);
   display.setTextDatum(C_BASELINE);
-  fitTextFont(label, width - 6, height >= 20 ? 18 : 13);
-  display.drawString(label, center, top + height - (height >= 20 ? 4 : 3));
+  const uint8_t size = fitTextFont(label, width - 6, height >= 20 ? 18 : 13);
+  // Built-in GLCD has no baseline metric; center its 8px cell from the top.
+  if (size == 6) display.setTextDatum(TC_DATUM);
+  display.drawString(label, center, size == 6 ? top + (height - 8)/2 : top + height - 4);
 }
 
 void drawWeatherPage() {
@@ -806,8 +862,13 @@ void drawAirQualityPage() {
   }
 }
 
+#endif
+
 // Rendering and page timing never initiate a network request.
 void drawCurrentPage() {
+#ifdef SDPRO_TICKER
+  tickerDraw(display);
+#else
   if (pageCycle.page==ForecastPage::Weather) {
     drawWeatherPage();
     weatherDirty = false;
@@ -815,6 +876,7 @@ void drawCurrentPage() {
     drawAirQualityPage();
     airQualityDirty = false;
   }
+#endif
   drawnPageMinute = time(nullptr) / 60;
   lastDrawAt=millis();
 }
@@ -825,9 +887,16 @@ void drawCurrentPage() {
 void setup() {
   Serial.begin(115200);
   Serial.printf("\n%s SD PRO ESP8266\n", kVersion);
+  wifiDisconnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &event) {
+    lastWifiDisconnectReason = event.reason;
+    Serial.printf("Wi-Fi disconnect reason: %u\n", event.reason);
+  });
   loadDeviceConfig(config);
   filesystemReady = LittleFS.begin();
   loadNetworkSettings(networkSettings, filesystemReady);
+#ifdef SDPRO_TICKER
+  tickerLoad(filesystemReady);
+#endif
   loadDisplaySettings(displaySettings, filesystemReady);
   pageCycle.configure(millis(), displaySettings.autoRotate, displaySettings.weatherPageSeconds,
                       displaySettings.airPageSeconds, displaySettings.fixedPage);
@@ -842,6 +911,7 @@ void setup() {
 }
 
 void loop() {
+  applyWifiPower(updating || restartAt);
   server.handleClient();
   if (accessPointRunning) dns.processNextRequest();
   const uint32_t now = millis();
@@ -853,23 +923,42 @@ void loop() {
   }
   lastServiceAt = now;
   applyBacklight();
-  const bool connected = WiFi.status() == WL_CONNECTED;
+  const int wifiStatus = WiFi.status();
+  if (wifiStatus != lastWifiStatus) {
+    lastWifiStatus = wifiStatus;
+    Serial.printf("Wi-Fi status: %s (%d)\n", wifiStatusText(wifiStatus), wifiStatus);
+    if (accessPointRunning) drawRecoveryWifiStatus(wifiStatus);
+  }
+  const bool connected = wifiStatus == WL_CONNECTED;
   if (pagesStarted && (!accessPointRunning || connected)) {
+#ifdef SDPRO_TICKER
+    if (tickerAdvance(now) || !lastDrawAt) drawCurrentPage();
+#else
     const bool pageChanged = pageCycle.advance(now);
     const bool dirty = pageCycle.page == ForecastPage::Weather
         ? weatherDirty : airQualityDirty;
     if (pageChanged || dirty || time(nullptr) / 60 != drawnPageMinute || !lastDrawAt) drawCurrentPage();
+#endif
   }
   if (!connected) {
     timeConfigured = false;
-    if (wifiConfigured(config) && now - connectStartedAt >= kConnectTimeoutMs) {
-      const uint8_t limit = config.wifiRetryLimit ? config.wifiRetryLimit : kDefaultWifiRetryLimit;
-      if (wifiAttemptCount >= limit) startAccessPoint();
-      else {
-        ++wifiAttemptCount;
-        WiFi.disconnect();
+    if (bootIpShown && !pagesStarted) {
+      bootIpShown = false;
+      message("Connecting Wi-Fi", config.ssid);
+    }
+    const uint8_t limit = config.wifiRetryLimit ? config.wifiRetryLimit : kDefaultWifiRetryLimit;
+    const auto retry = wifiRetryAction(now, connectStartedAt, wifiConfigured(config),
+                                      wifiAttemptCount, limit, accessPointRunning);
+    if (retry != WifiRetryAction::None) {
+      if (retry == WifiRetryAction::StartRecovery) startAccessPoint();
+      if (retry == WifiRetryAction::Retry || !accessPointRunning) {
+        if (wifiAttemptCount < limit) ++wifiAttemptCount;
+        // Retain credentials and the recovery AP when restarting station mode.
+        applyWifiPower(true);
+        WiFi.disconnect(false, false);
         WiFi.begin(config.ssid, config.wifiPassword);
-        message("Retrying Wi-Fi", config.ssid);
+        if (accessPointRunning) drawRecoveryWifiStatus(WiFi.status());
+        else message("Retrying Wi-Fi", config.ssid);
       }
       connectStartedAt = now;
     }
@@ -884,7 +973,20 @@ void loop() {
     weatherDirty = airQualityDirty = true;
   }
   wifiAttemptCount = 0;
+  // A later outage gets its own connection grace period, independent of uptime.
+  connectStartedAt = now;
   if (!pagesStarted) {
+    if (!bootIpShown) {
+      message("Wi-Fi connected", WiFi.localIP().toString());
+      bootIpShownAt = now;
+      bootIpShown = true;
+    }
+    // Keep the address readable before rendering or a blocking API fetch.
+    // HTTP, OTA and recovery servicing continue at the top of each loop.
+    if (now - bootIpShownAt < kBootIpDisplayMs) {
+      delay(10);
+      return;
+    }
     pagesStarted = true;
     pageCycle.begin(now);
     drawCurrentPage();
@@ -893,6 +995,9 @@ void loop() {
     configureTimeService(networkSettings, kDefaultTimezone);
     timeConfigured = true;
   }
+#ifdef SDPRO_TICKER
+  if (tickerPoll(now)) drawCurrentPage();
+#else
   if (weatherRefresh.due(now)) {
     SeoulWeatherDay next[3]{};
     const bool success = fetchSeoulWeather(next, citySettings);
@@ -918,5 +1023,6 @@ void loop() {
       if (pageCycle.page == ForecastPage::AirQuality) drawCurrentPage();
     }
   }
+#endif
   delay(10);
 }

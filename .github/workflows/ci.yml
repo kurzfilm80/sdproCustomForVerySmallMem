@@ -46,19 +46,12 @@ jobs:
           cache-dependency-path: firmware/web/package-lock.json
       - run: python -m pip install platformio==6.1.19 zopfli==0.4.1
       - run: npm ci --prefix firmware/web
-      - name: Build SD PRO, bootstrap and check device UI
-        run: |
-          make PIO=pio build
-          FIRMWARE_SHA256="$(sha256sum firmware/.pio/build/sdpro/firmware.bin | cut -d' ' -f1)"
-          make PIO=pio bootstrap-build \
-            BOOTSTRAP_VERSION=0.0.0 \
-            BOOTSTRAP_SHA256="${FIRMWARE_SHA256}"
-      - name: Native tests with address and undefined-behavior sanitizers
-        run: make test-native
+      - name: Build both SD PRO images and run firmware regressions
+        run: make PIO=pio PYTHON=python build-firmwares test-firmwares
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sdpro-test-build
-          path: firmware/.pio/build/sdpro/firmware.bin
+          path: dist/sdpro-*.bin
           retention-days: 7
           if-no-files-found: error
 
@@ -79,7 +72,7 @@ jobs:
       - run: python -m pip install Pillow==11.3.0 zopfli==0.4.1
       - run: make card-check card-build
       - run: npm ci --prefix firmware/web
-      - run: make web-build
+      - run: make PYTHON=python web-check
       - name: Install browser test runner
         run: |
           npm install --prefix .cache/browser --no-package-lock playwright@1.61.1
@@ -90,7 +83,7 @@ jobs:
         run: |
           node integration/card/tests/preview-interaction.cjs
           node integration/card/tests/animated-image.cjs
-          node tests/frontend_notifications.cjs
+          node firmware/tests/ticker_browser_test.cjs
 
   integration:
     runs-on: ubuntu-latest

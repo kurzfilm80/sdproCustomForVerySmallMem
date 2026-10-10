@@ -31,6 +31,9 @@ __pycache__/
 !.envrc.example
 secrets.yaml
 secrets.json
+notes/device-inventory.md
 *.elf
 *.map
 *.disasm
+
+firmware/src/TickerAssets.generated.h

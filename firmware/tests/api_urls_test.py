@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="sdpro-url-") as temporary:
         url = "".join(ast.literal_eval(literal) for literal in literals)
         code = '#include <cstdio>\nint main() { char url[' + str(capacity) + '];\n'
         code += 'int n = snprintf(url, sizeof(url), ' + declaration + ', "-90.000000", "-180.000000");\n'
-        code += 'if (n < 0 || n >= sizeof(url)) return 1; puts(url); }\n'
+        code += 'if (n < 0 || static_cast<size_t>(n) >= sizeof(url)) return 1;\nputs(url); }\n'
         file = directory / "url.cpp"
         file.write_text(code)
         binary = directory / "url"

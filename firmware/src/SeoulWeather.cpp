@@ -4,6 +4,7 @@
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecureBearSSL.h>
+#include "WifiPower.h"
 #include <cmath>
 
 SeoulWeatherError seoulWeatherLastError = SeoulWeatherError::None;
@@ -47,6 +48,7 @@ bool fetchSeoulWeather(SeoulWeatherDay out[3], const CitySettings &city) {
   if (WiFi.status() != WL_CONNECTED)
     return fail(SeoulWeatherError::Wifi, "Wi-Fi not connected");
 
+  ActiveWifiTransfer activeTransfer;
   Serial.printf("Weather heap=%u maxBlock=%u fragmentation=%u%%\n",
                 ESP.getFreeHeap(), ESP.getMaxFreeBlockSize(),
                 ESP.getHeapFragmentation());
