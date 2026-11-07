@@ -25,8 +25,13 @@ with tempfile.TemporaryDirectory() as temporary:
     env.name = 'sdpro-ticker'
     (root / 'sdpro-ticker.bin').write_bytes(b'ticker')
     env.callback(None, None, env)
+    env.name = 'sdpro-investment'
+    (root / 'sdpro-investment.bin').write_bytes(b'investment')
+    env.callback(None, None, env)
     assert (root / 'dist/sdpro-weather.bin').read_bytes() == b'weather'
     assert (root / 'dist/sdpro-ticker.bin').read_bytes() == b'ticker'
+    assert (root / 'dist/sdpro-investment.bin').read_bytes() == b'investment'
+    env.name = 'sdpro-ticker'
     (root / 'sdpro-ticker.bin').write_bytes(b'incremental')
     env.callback(None, None, env)
     assert (root / 'dist/sdpro-ticker.bin').read_bytes() == b'incremental'

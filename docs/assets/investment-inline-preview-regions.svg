@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Regional investment summary in a three-column grid</title>
+  <desc id="description">A 240 by 240 grid showing region and return, rounded holding amount in millions of Korean won, and holding share.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g stroke="#fff" stroke-width="1">
+    <path d="M0 0H240V240H0ZM80 0V240M160 0V240M0 48H240M0 96H240M0 144H240M0 192H240"/>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700">
+    <g fill="#fff" font-size="13">
+      <text x="5" y="16">GLOBAL</text>
+      <text x="5" y="33" fill="#ff3030">+0.7%</text>
+      <text x="5" y="64">U.S.</text>
+      <text x="5" y="81" fill="#ff3030">+0.3%</text>
+      <text x="5" y="112">CHINA</text>
+      <text x="5" y="129" fill="#3080ff">-17.7%</text>
+      <text x="5" y="160">KOREA</text>
+      <text x="5" y="177" fill="#3080ff">-1.8%</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="156" y="35">9</text>
+      <text x="156" y="83">43</text>
+      <text x="156" y="131">7</text>
+      <text x="156" y="179">49</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="236" y="35">8%</text>
+      <text x="236" y="83">40%</text>
+      <text x="236" y="131">7%</text>
+      <text x="236" y="179">46%</text>
+    </g>
+    <g fill="#ffd900">
+      <text x="5" y="208" font-size="13">TOTAL</text>
+      <text x="5" y="225" font-size="13">-2.1%</text>
+      <text x="156" y="227" font-size="24" text-anchor="end">108</text>
+      <text x="236" y="227" font-size="24" text-anchor="end">100%</text>
+    </g>
+  </g>
+</svg>

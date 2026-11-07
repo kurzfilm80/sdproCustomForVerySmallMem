@@ -4,11 +4,18 @@
 
 ### Features
 
+- Build a separate SD PRO investment-summary image with rotating asset-group,
+  stock-region and detailed stock-goal pages. Align labels, cost-basis returns,
+  rounded holding amounts and page shares in a large-font grid; show published
+  stock subcategory amounts and actual allocation rates. Add three retirement
+  account pages for assets, stock regions and detailed allocation goals.
+  Discover CSV columns by header and retain each page's last good data during
+  fetch failures.
 - Configure automatic or fixed WEATHER/AIR QUALITY display from the web portal;
   choose 5/10/15/30/60-second durations (defaults 15/10 seconds) and apply without
   rebooting while both APIs keep their independent refresh schedules.
 - Set 20/40/60/80/100% day brightness (default 80%) and optional KST night mode,
-  with configurable start/end (defaults 22:00/07:00) and 20/30/40/50% night
+  with configurable start/end (defaults 22:00/07:00) and 10/20/30/40/50% night
   brightness (default 30%); handle overnight intervals and unsynchronized time.
 
 - Select SEOUL, BUSAN, INCHEON, DAEJEON, DAEGU, GWANGJU, ULSAN, SUWON or JEJU
@@ -72,6 +79,9 @@
 
 ### Testing and tooling
 
+- Test streamed investment CSV parsing with reordered and duplicate headers,
+  inserted columns, quoted KRW amounts and regional rollups; verify percentage
+  formatting, regional totals, 12-second page rotation and both 240px layouts.
 - Check all weekday rollover combinations and unsynchronized placeholders;
   verify shared-header and today/compact-row glyph bounds, numeric fallbacks,
   grade faces and 4px margins; generate a 1.6KiB 48px numeric clock font ahead

@@ -4,6 +4,9 @@
 
 ### Features
 
+- Refresh each investment and retirement worksheet every six hours instead of
+  every 15 minutes; retain the existing failure retry backoff.
+
 - Add 10% night brightness to display settings while retaining saved brightness
   and night schedules.
 

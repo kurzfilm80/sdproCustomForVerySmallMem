@@ -27,11 +27,15 @@
 #include "WebAssets.generated.h"
 #ifdef SDPRO_TICKER
 #include "Ticker.h"
+#elif defined(SDPRO_INVESTMENT)
+#include "InvestmentSummary.h"
 #endif
 
 namespace {
 #ifdef SDPRO_TICKER
 constexpr char kVersion[] = "SDPRO-Ticker-1.0.0";
+#elif defined(SDPRO_INVESTMENT)
+constexpr char kVersion[] = "SDPRO-Investment-1.1.0";
 #else
 constexpr char kVersion[] = "SeoulWeather-4.0.0";
 #endif
@@ -210,9 +214,26 @@ void sendStatus() {
   doc["freeHeapBytes"] = ESP.getFreeHeap();
   doc["maximumFreeBlockBytes"] = ESP.getMaxFreeBlockSize();
   doc["heapFragmentationPercent"] = ESP.getHeapFragmentation();
+#ifdef SDPRO_INVESTMENT
+  doc["investmentValid"] = investmentTargetValid();
+  doc["investmentError"] = investmentTargetError();
+  doc["investmentHttpCode"] = investmentTargetHttpCode();
+  doc["investmentAgeSeconds"] = investmentTargetAgeSeconds();
+  doc["investmentStockGoalsValid"] = investmentStockGoalsValid();
+  doc["investmentStockGoalsError"] = investmentStockGoalsError();
+  doc["investmentRetirementValid"] = investmentRetirementValid();
+  doc["investmentRetirementError"] = investmentRetirementError();
+  doc["investmentRetirementHttpCode"] = investmentRetirementHttpCode();
+  doc["investmentRetirementAgeSeconds"] = investmentRetirementAgeSeconds();
+  doc["investmentRegionsValid"] = investmentRegionsValid();
+  doc["investmentRegionsError"] = investmentRegionsError();
+  doc["investmentRegionsHttpCode"] = investmentRegionsHttpCode();
+  doc["investmentRegionsAgeSeconds"] = investmentRegionsAgeSeconds();
+#else
   doc["weatherValid"] = seoulWeatherValid;
   doc["weatherError"] = seoulWeatherLastErrorText;
   doc["weatherHttpCode"] = seoulWeatherLastHttpCode;
+#endif
   doc["brightness"] = displayBrightness;
   encodeDisplaySettings(doc.createNestedObject("displaySettings"), displaySettings);
   doc["cpuMHz"] = ESP.getCpuFreqMHz();
@@ -456,6 +477,8 @@ void finishUpdate() {
 void configureRoutes() {
 #ifdef SDPRO_TICKER
   tickerRoutes(server, [] { return authenticated(); });
+#elif defined(SDPRO_INVESTMENT)
+  server.on("/", HTTP_GET, sendPage);
 #else
   server.on("/", HTTP_GET, sendPage);
 #endif
@@ -479,7 +502,7 @@ void configureRoutes() {
   server.begin();
 }
 
-#ifndef SDPRO_TICKER
+#if !defined(SDPRO_TICKER) && !defined(SDPRO_INVESTMENT)
 // Scale primitives for today and compact forecasts without a sprite or bitmap.
 void drawWeatherIcon(int16_t x, int16_t y, int weatherCode, int16_t size) {
   const auto scale = [size](int16_t v) -> int16_t { return (v * size + 14) / 28; };
@@ -868,6 +891,8 @@ void drawAirQualityPage() {
 void drawCurrentPage() {
 #ifdef SDPRO_TICKER
   tickerDraw(display);
+#elif defined(SDPRO_INVESTMENT)
+  investmentDraw(display);
 #else
   if (pageCycle.page==ForecastPage::Weather) {
     drawWeatherPage();
@@ -933,6 +958,8 @@ void loop() {
   if (pagesStarted && (!accessPointRunning || connected)) {
 #ifdef SDPRO_TICKER
     if (tickerAdvance(now) || !lastDrawAt) drawCurrentPage();
+#elif defined(SDPRO_INVESTMENT)
+    if (investmentAdvance(now) || !lastDrawAt) drawCurrentPage();
 #else
     const bool pageChanged = pageCycle.advance(now);
     const bool dirty = pageCycle.page == ForecastPage::Weather
@@ -997,6 +1024,8 @@ void loop() {
   }
 #ifdef SDPRO_TICKER
   if (tickerPoll(now)) drawCurrentPage();
+#elif defined(SDPRO_INVESTMENT)
+  if (investmentPoll(now)) drawCurrentPage();
 #else
   if (weatherRefresh.due(now)) {
     SeoulWeatherDay next[3]{};

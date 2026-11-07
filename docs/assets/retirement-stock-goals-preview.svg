@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Retirement stock subcategory goals preview</title>
+  <desc id="description">A six-row grid showing retirement stock subcategories, rounded holding amounts in millions of Korean won, and published actual allocation rates.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g stroke="#fff" stroke-width="1">
+    <path d="M0 0H240V240H0ZM80 0V240M160 0V240M0 40H240M0 80H240M0 120H240M0 160H240M0 200H240"/>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700">
+    <g fill="#fff" font-size="13">
+      <text x="5" y="15">VALUE</text>
+      <text x="5" y="55">GOLD</text>
+      <text x="5" y="95">HEALTH</text>
+      <text x="5" y="135">MARKET</text>
+      <text x="5" y="175">AI/TECH</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="156" y="30">7</text>
+      <text x="156" y="70">0</text>
+      <text x="156" y="110">2</text>
+      <text x="156" y="150">13</text>
+      <text x="156" y="190">33</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="236" y="30">12%</text>
+      <text x="236" y="70">0%</text>
+      <text x="236" y="110">3%</text>
+      <text x="236" y="150">24%</text>
+      <text x="236" y="190">59%</text>
+    </g>
+    <g fill="#ffd900">
+      <text x="5" y="215" font-size="13">TOTAL</text>
+      <text x="156" y="230" font-size="24" text-anchor="end">56</text>
+      <text x="236" y="230" font-size="24" text-anchor="end">100%</text>
+    </g>
+  </g>
+</svg>

@@ -49,7 +49,7 @@ web-check: web-build
 	cd firmware && node tests/city_portal_test.cjs && node tests/ticker_portal_test.cjs
 
 size: build
-	$(PIO) run --project-dir firmware -e sdpro-weather -e sdpro-ticker --target size
+	$(PIO) run --project-dir firmware -e sdpro-weather -e sdpro-ticker -e sdpro-investment --target size
 
 elf-report:
 	@test -f firmware/.pio/build/sdpro/firmware.elf || { echo "build firmware first"; exit 1; }
@@ -216,7 +216,7 @@ build-firmwares:
 	npm ci --prefix firmware/web
 	$(PYTHON) firmware/scripts/embed_web.py
 	$(PYTHON) firmware/scripts/embed_ticker.py
-	$(PIO) run --project-dir firmware -e sdpro-weather -e sdpro-ticker
+	$(PIO) run --project-dir firmware -e sdpro-weather -e sdpro-ticker -e sdpro-investment
 
 test-firmwares:
 	$(PYTHON) firmware/scripts/test_firmwares.py

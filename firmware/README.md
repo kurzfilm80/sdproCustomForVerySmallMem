@@ -39,6 +39,14 @@ using Copernicus Atmosphere Monitoring Service (CAMS) model data.
 
 ## Build
 
+The separate SD PRO investment-target firmware is available as
+`sdpro-investment`; see [its data source, display and limitations](../docs/investment-firmware.md).
+It rotates asset-group, stock-region and detailed stock-goal pages, with
+P/L percentages and aligned amount/share columns, then adds three retirement
+account allocation pages. Night mode can be configured independently through
+the display settings.
+Build it with `pio run -e sdpro-investment` from this directory.
+
 From this `firmware` directory:
 
 ```sh

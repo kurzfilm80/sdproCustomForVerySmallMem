@@ -318,9 +318,12 @@ Hardware research and inspiration:
 
 Enjoy your tiny screen? You can [buy me a coffee](https://ko-fi.com/piotrkochan).
 
-## Separate SD PRO weather / ticker images
+## Separate SD PRO firmware images
 
 Run `make build-firmwares` to build `dist/sdpro-weather.bin` and
-`dist/sdpro-ticker.bin`. The weather image keeps the existing weather/air-quality
-screens; the ticker image adds a local editor, eight Yahoo symbols and rotation.
-See [build, limitations and OTA acceptance](docs/ticker-firmware.md).
+`dist/sdpro-ticker.bin` and `dist/sdpro-investment.bin`. The weather image keeps
+the existing weather/air-quality screens; the ticker image adds a local editor,
+eight Yahoo symbols and rotation; the investment image shows public Google
+Sheets asset-group, regional and stock-subcategory goals, plus the same three
+views for a retirement account. See [ticker build, limitations and OTA acceptance](docs/ticker-firmware.md)
+and [investment firmware details and screen preview](docs/investment-firmware.md).

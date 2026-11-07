@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Expected SD PRO stock-region display</title>
+  <desc id="description">A data-only 240 by 240 display with large regional holdings and profit/loss values in millions of Korean won.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g font-family="Arial, sans-serif" font-size="13" font-weight="700">
+    <text x="4" y="21" fill="#fff">GLOBAL</text>
+    <text x="236" y="21" fill="#fff" text-anchor="end">8.58M(8%)</text>
+    <text x="4" y="40" fill="#fff">P/L M</text>
+    <text x="236" y="40" fill="#ff3030" text-anchor="end">0.06M(+0.7%)</text>
+
+    <text x="4" y="68" fill="#fff">U.S.</text>
+    <text x="236" y="68" fill="#fff" text-anchor="end">42.81M(40%)</text>
+    <text x="4" y="87" fill="#fff">P/L M</text>
+    <text x="236" y="87" fill="#ff3030" text-anchor="end">0.12M(+0.3%)</text>
+
+    <text x="4" y="115" fill="#fff">CHINA</text>
+    <text x="236" y="115" fill="#fff" text-anchor="end">7.14M(7%)</text>
+    <text x="4" y="134" fill="#fff">P/L M</text>
+    <text x="236" y="134" fill="#3080ff" text-anchor="end">-1.53M(-17.7%)</text>
+
+    <text x="4" y="162" fill="#fff">KOREA</text>
+    <text x="236" y="162" fill="#fff" text-anchor="end">48.98M(46%)</text>
+    <text x="4" y="181" fill="#fff">P/L M</text>
+    <text x="236" y="181" fill="#3080ff" text-anchor="end">-0.91M(-1.8%)</text>
+
+    <text x="4" y="209" fill="#ffe000">TOTAL</text>
+    <text x="236" y="209" fill="#ffe000" text-anchor="end">107.51M(100%)</text>
+    <text x="4" y="228" fill="#ffe000">P/L M</text>
+    <text x="236" y="228" fill="#ffe000" text-anchor="end">-2.28M(-2.1%)</text>
+  </g>
+</svg>
