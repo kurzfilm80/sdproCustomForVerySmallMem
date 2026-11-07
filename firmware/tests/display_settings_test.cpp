@@ -29,6 +29,15 @@ int main() {
   assert(restored.weatherPageSeconds == 60 && restored.airPageSeconds == 5 && restored.brightness == 75);
   assert(restored.nightModeEnabled && restored.nightStart == 1320 && restored.nightEnd == 420);
   assert(document["nightStart"] == "22:00" && document["nightEnd"] == "07:00");
+  document["nightBrightness"] = 10;
+  assert(decodeDisplaySettings(document.as<JsonObjectConst>(), restored, repaired));
+  assert(!repaired && restored.nightBrightness == 10);
+  assert(effectiveDisplayBrightness(restored, 1320, true) == 10);
+  assert(effectiveDisplayBrightness(restored, 419, true) == 10);
+  assert(effectiveDisplayBrightness(restored, 420, true) == 75);
+  encodeDisplaySettings(document.to<JsonObject>(), restored);
+  assert(document["nightBrightness"] == 10);
+  assert(nightBrightnessValid(10) && !nightBrightnessValid(0) && !nightBrightnessValid(15));
   document["weatherPageSeconds"] = 12;
   document["airPageSeconds"] = "15";
   document["nightStart"] = "24:00";

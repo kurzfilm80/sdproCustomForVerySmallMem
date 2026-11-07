@@ -50,3 +50,15 @@ When redistributing firmware, include the matching source archive and preserve
 its license/copyright files. When distributing the HA integration, retain both
 license files in its `frontend` directory. User-uploaded fonts and images are not
 relicensed by this project.
+
+## SD PRO ticker adaptation
+
+The Yahoo chart parsing/downsampling and ticker rendering design in
+`firmware/src/TickerJson.h` and `Ticker.cpp` adapt
+[giovi321/smalltv-mod](https://github.com/giovi321/smalltv-mod), revision
+`9201e86362164177941b5a1754acf5161ae269c0`, specifically
+`src/features/ticker/StockClient.cpp`, `StockData.h`, and `TickerMode.cpp`.
+Upstream copyright: (C) 2026 giovi321; WTFPL v2. The original license is retained
+in `docs/smalltv-mod-LICENSE.txt`. New integration, bounded storage and web UI
+code use this repository's MIT license. No JUZIPi vendor source or upstream
+firmware binary was copied. See `docs/ticker-firmware.md` for differences.

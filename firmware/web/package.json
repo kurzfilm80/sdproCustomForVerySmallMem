@@ -2,7 +2,8 @@
   "name": "sdpro-weather-portal",
   "private": true,
   "scripts": {
-    "build": "terser city.js --compress --mangle --output city.min.js"
+    "build": "terser city.js --compress --mangle --output city.min.js",
+    "build:ticker": "terser ticker.js --compress --mangle --output ticker.min.js"
   },
   "devDependencies": {
     "terser": "5.44.0"

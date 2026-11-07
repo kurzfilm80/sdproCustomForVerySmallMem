@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Expected SD PRO investment summary display</title>
+  <desc id="description">A data-only 240 by 240 display with large asset-group holdings and profit/loss values in millions of Korean won.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g font-family="Arial, sans-serif" font-size="13" font-weight="700">
+    <text x="4" y="21" fill="#fff">BONDS</text>
+    <text x="236" y="21" fill="#fff" text-anchor="end">17.26M(9%)</text>
+    <text x="4" y="39" fill="#fff">P/L M</text>
+    <text x="236" y="39" fill="#ff3030" text-anchor="end">6.57M(+61.4%)</text>
+
+    <text x="4" y="59" fill="#fff">CMDTY</text>
+    <text x="236" y="59" fill="#fff" text-anchor="end">26.90M(14%)</text>
+    <text x="4" y="77" fill="#fff">P/L M</text>
+    <text x="236" y="77" fill="#3080ff" text-anchor="end">-0.81M(-2.9%)</text>
+
+    <text x="4" y="97" fill="#fff">CRYPTO</text>
+    <text x="236" y="97" fill="#fff" text-anchor="end">40.15M(20%)</text>
+    <text x="4" y="115" fill="#fff">P/L M</text>
+    <text x="236" y="115" fill="#3080ff" text-anchor="end">-17.16M(-29.9%)</text>
+
+    <text x="4" y="135" fill="#fff">REITS</text>
+    <text x="236" y="135" fill="#fff" text-anchor="end">6.67M(3%)</text>
+    <text x="4" y="153" fill="#fff">P/L M</text>
+    <text x="236" y="153" fill="#ff3030" text-anchor="end">0.43M(+6.9%)</text>
+
+    <text x="4" y="173" fill="#fff">STOCKS</text>
+    <text x="236" y="173" fill="#fff" text-anchor="end">107.51M(54%)</text>
+    <text x="4" y="191" fill="#fff">P/L M</text>
+    <text x="236" y="191" fill="#3080ff" text-anchor="end">-2.19M(-2.0%)</text>
+
+    <text x="4" y="211" fill="#ffe000">TOTAL</text>
+    <text x="236" y="211" fill="#ffe000" text-anchor="end">198.49M(100%)</text>
+    <text x="4" y="229" fill="#ffe000">P/L M</text>
+    <text x="236" y="229" fill="#ffe000" text-anchor="end">-13.17M(-6.2%)</text>
+  </g>
+</svg>

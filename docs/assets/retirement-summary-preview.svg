@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Retirement allocation pie chart</title>
+  <desc id="description">A full-screen pie chart divided by retirement asset share, with each nonzero asset's abbreviation, holding, allocation, and return placed in its slice.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g stroke="#000" stroke-width="1.5">
+    <path d="M120 120L120 2A118 118 0 0 1 211.1 44.8Z" fill="#ffd900"/>
+    <path d="M120 120L211.1 44.8A118 118 0 0 1 183.2 220.2Z" fill="#39d6c5"/>
+    <path d="M120 120L183.2 220.2A118 118 0 0 1 134.8 237Z" fill="#4d9dff"/>
+    <path d="M120 120L134.8 237A118 118 0 1 1 120 2Z" fill="#ff765e"/>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700" fill="#000" text-anchor="middle">
+    <text x="155" y="46" font-size="7">BND</text>
+    <text x="155" y="54" font-size="6">10M · 14%</text>
+    <text x="155" y="62" font-size="6">-0.5%</text>
+    <text x="191" y="134" font-size="7">MIX</text>
+    <text x="191" y="142" font-size="6">19M · 27%</text>
+    <text x="191" y="150" font-size="6">+4.2%</text>
+    <text x="53" y="113" font-size="7" fill="#fff">STK</text>
+    <text x="53" y="121" font-size="6" fill="#fff">37M · 52%</text>
+    <text x="53" y="129" font-size="6" fill="#fff">+30.0%</text>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-size="4.8" font-weight="700" fill="#000" text-anchor="middle">
+    <text x="143" y="194" transform="rotate(70 143 194)">MAT 5M · 7% · -16.9%</text>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-size="5" font-weight="700" fill="#fff">
+    <text x="111" y="108" text-anchor="end">CSH 0M · 0%</text>
+    <text x="111" y="116" text-anchor="end">RE 0M · 0%</text>
+  </g>
+  <text x="121" y="127" font-family="Inter Tight, Arial, sans-serif" font-size="5" font-weight="700" fill="#fff">TOTAL +13.2%</text>
+</svg>

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Stock subcategory investment goals preview</title>
+  <desc id="description">A 240 by 240 grid showing each stock subcategory, its rounded holding amount in millions of Korean won, and the published actual investment rate.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g stroke="#fff" stroke-width="1">
+    <path d="M0 0H240V240H0ZM80 0V240M160 0V240M0 26.667H240M0 53.333H240M0 80H240M0 106.667H240M0 133.333H240M0 160H240M0 186.667H240M0 213.333H240"/>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700">
+    <g fill="#fff" font-size="13">
+      <text x="5" y="13">FIN/VALUE</text>
+      <text x="5" y="39.7">BIO/HLTH</text>
+      <text x="5" y="66.3">SEMIS</text>
+      <text x="5" y="93">IND/AUTO</text>
+      <text x="5" y="119.7">CONSUMER</text>
+      <text x="5" y="146.3">MARKET</text>
+      <text x="5" y="173">ENERGY</text>
+      <text x="5" y="199.7">AI/TECH</text>
+      <text x="5" y="226.3" fill="#ffd900">TOTAL</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="156" y="18">11</text>
+      <text x="156" y="44.7">11</text>
+      <text x="156" y="71.3">23</text>
+      <text x="156" y="98">4</text>
+      <text x="156" y="124.7">2</text>
+      <text x="156" y="151.3">12</text>
+      <text x="156" y="178">5</text>
+      <text x="156" y="204.7">39</text>
+      <text x="156" y="231.3" fill="#ffd900">108</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="236" y="18">11%</text>
+      <text x="236" y="44.7">10%</text>
+      <text x="236" y="71.3">21%</text>
+      <text x="236" y="98">4%</text>
+      <text x="236" y="124.7">2%</text>
+      <text x="236" y="151.3">11%</text>
+      <text x="236" y="178">5%</text>
+      <text x="236" y="204.7">37%</text>
+      <text x="236" y="231.3" fill="#ffd900">100%</text>
+    </g>
+  </g>
+</svg>

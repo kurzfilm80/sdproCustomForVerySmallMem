@@ -21,7 +21,7 @@ inline bool pageSecondsValid(unsigned value) {
   return value == 5 || value == 10 || value == 15 || value == 30 || value == 60;
 }
 inline bool nightBrightnessValid(unsigned value) {
-  return value == 20 || value == 30 || value == 40 || value == 50;
+  return value == 10 || value == 20 || value == 30 || value == 40 || value == 50;
 }
 inline bool parseDisplayTime(const char *text, uint16_t &minutes) {
   if (!text || std::strlen(text) != 5 || text[2] != ':') return false;
@@ -65,7 +65,7 @@ inline bool decodeDisplaySettings(JsonObjectConst document, DisplaySettings &set
   settings.nightModeEnabled = readStoredBool(document, "nightModeEnabled", false, repaired);
   if (!parseDisplayTime(document["nightStart"] | "", settings.nightStart)) repaired = true;
   if (!parseDisplayTime(document["nightEnd"] | "", settings.nightEnd)) repaired = true;
-  settings.nightBrightness = readStoredInt(document, "nightBrightness", 30, 20, 50, repaired);
+  settings.nightBrightness = readStoredInt(document, "nightBrightness", 30, 10, 50, repaired);
   if (!nightBrightnessValid(settings.nightBrightness)) { settings.nightBrightness = 30; repaired = true; }
   return true;
 }

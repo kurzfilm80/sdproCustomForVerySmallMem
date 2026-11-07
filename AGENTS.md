@@ -25,6 +25,9 @@ hardware behavior.
 
 ## Directory layout
 
+- 실기기 위치, 펌웨어 종류, IP와 업로드 지침은 `notes/device-inventory.md`를 참조한다.
+  목록에 등록된 기기라도 사용자의 명시적인 업로드 명령이 있어야 업로드한다.
+
 - `firmware/`: PlatformIO custom firmware
 - `notes/`: pinout, development, and reverse-engineering records
 - `stock/`: original vendor binaries, checksums, and rollback assets

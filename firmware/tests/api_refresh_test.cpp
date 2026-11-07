@@ -19,4 +19,13 @@ int main() {
   assert(weather.due(now + 900000));
   weather.complete(now, false);
   assert(weather.interval == 30000);
+
+  ApiRefresh investment(6UL * 60UL * 60UL * 1000UL);
+  assert(investment.due(0));
+  investment.complete(0, true);
+  assert(investment.interval == 21600000UL);
+  assert(!investment.due(21599999UL));
+  assert(investment.due(21600000UL));
+  investment.complete(21600000UL, false);
+  assert(investment.interval == 30000UL);
 }

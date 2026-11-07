@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Investment allocation pie chart</title>
+  <desc id="description">A full-screen pie chart divided by investment share, with each asset abbreviation, holding, allocation, and return placed in its slice.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g stroke="#000" stroke-width="1.5">
+    <path d="M120 120L120 2A118 118 0 0 1 183.2 20.8Z" fill="#ffd900"/>
+    <path d="M120 120L183.2 20.8A118 118 0 0 1 237.1 105.2Z" fill="#39d6c5"/>
+    <path d="M120 120L237.1 105.2A118 118 0 0 1 170.3 226.7Z" fill="#4d9dff"/>
+    <path d="M120 120L170.3 226.7A118 118 0 0 1 149.4 234.3Z" fill="#be83ff"/>
+    <path d="M120 120L149.4 234.3A118 118 0 1 1 120 2Z" fill="#ff765e"/>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700" fill="#000" text-anchor="middle">
+    <text x="146" y="34" font-size="7">BND</text>
+    <text x="146" y="42" font-size="6">17M · 9%</text>
+    <text x="146" y="50" font-size="6">+61.4%</text>
+    <text x="192" y="75" font-size="7">MAT</text>
+    <text x="192" y="83" font-size="6">27M · 14%</text>
+    <text x="192" y="91" font-size="6">-2.9%</text>
+    <text x="195" y="151" font-size="7">CRY</text>
+    <text x="195" y="159" font-size="6">40M · 20%</text>
+    <text x="195" y="167" font-size="6">-29.9%</text>
+    <text x="50" y="125" font-size="8" fill="#fff">STK</text>
+    <text x="50" y="135" font-size="7" fill="#fff">108M · 54%</text>
+    <text x="50" y="145" font-size="7" fill="#fff">-2.0%</text>
+  </g>
+  <text x="147" y="195" transform="rotate(70 147 195)" font-family="Inter Tight, Arial, sans-serif" font-size="5" font-weight="700" fill="#000" text-anchor="middle">RE 7M · 3% · +6.9%</text>
+</svg>

@@ -1,6 +1,8 @@
 """Check actual bundled glyph bounds for the 240x240 baseline layouts."""
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 
 root = Path(__file__).resolve().parents[1]
 fonts = {}
@@ -88,5 +90,40 @@ for number in ['--','0','18','100','999']:
 # Extreme valid API values are bounded to 999 rather than clipping.
 box('999',fit('999',62,48),48,121,'center')
 box('999',fit('999',48,36),207,221,'center')
+
+
+# Exercise the firmware's actual selector with widths from the bundled glyphs.
+# The layout model alone cannot catch a selector that starts above its maximum.
+source = (root / 'src/main.cpp').read_text()
+selector = source[source.index('uint8_t fitTextFont('):source.index('\nvoid drawPageHeader()')]
+labels = ['GOOD', 'NORMAL', 'BAD', 'VERY BAD', '--', '100%']
+font_names = {13:'InterTightCompact13',18:'InterTightBold18',24:'InterTightBold24',
+              36:'InterTightBold36',48:'InterTightDigits48'}
+cpp = '#include <cstdint>\n#include <cassert>\n#include <cstring>\n'
+cpp += ''.join(f'int {name}={size};\n' for size,name in font_names.items())
+cpp += 'struct Display { int selected=0; void setFreeFont(int *f) {selected=*f;} void setTextFont(int f) {selected=f==1?6:0;} int textWidth(const char *text) {\n'
+for label in labels:
+    for size in [13,18,24,36,6]:
+        cpp += f'if (selected=={size} && !strcmp(text,"{label}")) return {width(label,size)};\n'
+cpp += 'assert(false); return 0; }} display;\n' + selector + '\nint main() {\n'
+for label in labels:
+    for maximum,limit in ([(18,38)] if label=='100%' else [(18,94),(13,54)]):
+        expected=fit(label,limit,maximum)
+        cpp += f'assert(fitTextFont("{label}",{limit},{maximum})=={expected}); assert(display.selected=={expected});\n'
+cpp += '}\n'
+with tempfile.TemporaryDirectory() as directory:
+    path=Path(directory)
+    (path/'font_fit.cpp').write_text(cpp)
+    subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror',str(path/'font_fit.cpp'),'-o',str(path/'font_fit')],check=True)
+    subprocess.run([str(path/'font_fit')],check=True)
+
+for label in ['GOOD','NORMAL','BAD','VERY BAD','--']:
+    for center,top,badge_width,height,maximum in [(60,125,100,20,18),(180,125,100,20,18),
+                                                (136,182,60,15,13),(205,224,60,15,13)]:
+        size=fit(label,badge_width-6,maximum)
+        baseline=top+(height-8)//2 if size==6 else top+height-4
+        bounds=box(label,size,center,baseline,'center')
+        assert bounds[0]>=center-badge_width//2 and bounds[2]<=center+badge_width//2, (label,bounds)
+        assert bounds[1]>=top and bounds[3]<=top+height, (label,bounds)
 
 print('PASS: framed high-contrast layout, large yellow clock, weather priority, grade faces and bounded badges')

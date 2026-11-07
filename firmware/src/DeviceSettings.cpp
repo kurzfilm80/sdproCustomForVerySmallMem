@@ -131,11 +131,11 @@ bool wifiConfigured(const DeviceConfig &config) {
   return deviceConfigValid(config) && config.ssid[0] != '\0';
 }
 
-void saveDeviceConfig(DeviceConfig &config) {
+bool saveDeviceConfig(DeviceConfig &config) {
   config.magic = kConfigMagic;
   config.checksum = checksum(config);
   EEPROM.put(0, config);
-  EEPROM.commit();
+  return EEPROM.commit();
 }
 
 bool eraseDeviceConfig() {

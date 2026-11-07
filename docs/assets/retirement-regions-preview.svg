@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Retirement stock-region allocation preview</title>
+  <desc id="description">A five-row grid showing stock-region holdings in rounded millions of Korean won and their share of the retirement stock allocation.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <g stroke="#fff" stroke-width="1">
+    <path d="M0 0H240V240H0ZM80 0V240M160 0V240M0 48H240M0 96H240M0 144H240M0 192H240"/>
+  </g>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700">
+    <g fill="#fff" font-size="13">
+      <text x="5" y="17">GLOBAL</text>
+      <text x="5" y="65">U.S.</text>
+      <text x="5" y="113">CHINA</text>
+      <text x="5" y="161">KOREA</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="156" y="35">4</text>
+      <text x="156" y="83">29</text>
+      <text x="156" y="131">2</text>
+      <text x="156" y="179">21</text>
+    </g>
+    <g fill="#fff" font-size="24" text-anchor="end">
+      <text x="236" y="35">8%</text>
+      <text x="236" y="83">52%</text>
+      <text x="236" y="131">3%</text>
+      <text x="236" y="179">37%</text>
+    </g>
+    <g fill="#ffd900">
+      <text x="5" y="208" font-size="13">TOTAL</text>
+      <text x="156" y="227" font-size="24" text-anchor="end">56</text>
+      <text x="236" y="227" font-size="24" text-anchor="end">100%</text>
+    </g>
+  </g>
+</svg>
