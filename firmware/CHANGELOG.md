@@ -4,13 +4,11 @@
 
 ### Features
 
-- Build a separate SD PRO investment-summary image with rotating asset-group,
-  stock-region and detailed stock-goal pages. Align labels, cost-basis returns,
-  rounded holding amounts and page shares in a large-font grid; show published
-  stock subcategory amounts and actual allocation rates. Add three retirement
-  account pages for assets, stock regions and detailed allocation goals.
-  Discover CSV columns by header and retain each page's last good data during
-  fetch failures.
+- Build a separate SD PRO investment-summary image with two account pages:
+  general investment and retirement. Each combines assets, regional holdings
+  and stock goals in a bottom-to-top scroll with four visible rows and a fixed
+  total; retain rounded amounts, allocation shares and red/blue cost-basis
+  returns. Discover CSV columns by header and retain last-good data on failures.
 - Configure automatic or fixed WEATHER/AIR QUALITY display from the web portal;
   choose 5/10/15/30/60-second durations (defaults 15/10 seconds) and apply without
   rebooting while both APIs keep their independent refresh schedules.

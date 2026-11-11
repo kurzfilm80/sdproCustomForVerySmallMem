@@ -32,6 +32,11 @@
 
 ### Fixes
 
+- Accept omitted zero-valued retirement asset categories when the worksheet
+  total still reconciles, preventing retirement pages from failing to load.
+- Retry investment-sheet refreshes when stock-goal data is incomplete instead
+  of treating a partial sheet response as a six-hour success.
+
 - Respect the requested font size for air-quality grade badges and precipitation
   percentages; prevent short labels such as BAD from using oversized 24px text.
   Keep compact badges within the bottom display margin and center the built-in

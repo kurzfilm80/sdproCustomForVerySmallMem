@@ -12,7 +12,13 @@ constexpr uint16_t kInvestmentCsvByteLimit = 16384;
 constexpr uint16_t kInvestmentCsvRowLimit = 2048;
 constexpr uint8_t kInvestmentRegionCount = 4;
 constexpr uint8_t kInvestmentStockGoalCount = 8;
-constexpr uint8_t kInvestmentPageCount = 6;
+constexpr uint8_t kInvestmentPageCount = 2;
+constexpr uint8_t kInvestmentVisibleRows = 4;
+constexpr uint8_t kInvestmentScrollRowHeight = 40;
+constexpr uint8_t kInvestmentScrollPixelsPerFrame = 2;
+constexpr uint16_t kInvestmentScrollFrameMs = 80;
+constexpr uint16_t kInvestmentScrollPauseMs = 1500;
+constexpr uint16_t kInvestmentPageEndPauseMs = 1800;
 
 struct InvestmentAmount {
   int32_t holdings = 0;
@@ -44,19 +50,56 @@ struct InvestmentRegionSummary {
 
 struct InvestmentPageCycle {
   uint8_t page = 0;
-  uint32_t shownAt = 0;
+  uint8_t scrollIndex = 0;
+  uint8_t scrollOffset = 0;
+  uint32_t changedAt = 0;
+  uint32_t frameAt = 0;
+  bool scrolling = false;
   bool started = false;
 
-  bool advance(uint32_t now) {
+  bool advance(uint32_t now, uint8_t rowCount) {
     if (!started) {
       started = true;
-      shownAt = now;
+      changedAt = frameAt = now;
       return false;
     }
-    if (now - shownAt < 12000) return false;
-    page = (page + 1) % kInvestmentPageCount;
-    shownAt = now;
-    return true;
+
+    const uint8_t lastScrollIndex = rowCount > kInvestmentVisibleRows
+        ? rowCount - kInvestmentVisibleRows : 0;
+    if (scrollIndex > lastScrollIndex) {
+      scrollIndex = lastScrollIndex;
+      scrollOffset = 0;
+      scrolling = false;
+      changedAt = now;
+      return true;
+    }
+
+    if (scrolling) {
+      if (now - frameAt < kInvestmentScrollFrameMs) return false;
+      frameAt = now;
+      scrollOffset += kInvestmentScrollPixelsPerFrame;
+      if (scrollOffset >= kInvestmentScrollRowHeight) {
+        scrollOffset = 0;
+        ++scrollIndex;
+        scrolling = false;
+        changedAt = now;
+      }
+      return true;
+    }
+
+    if (scrollIndex == lastScrollIndex) {
+      if (now - changedAt < kInvestmentPageEndPauseMs) return false;
+      page = (page + 1) % kInvestmentPageCount;
+      scrollIndex = 0;
+      scrollOffset = 0;
+      changedAt = frameAt = now;
+      return true;
+    }
+
+    if (now - changedAt < kInvestmentScrollPauseMs) return false;
+    scrolling = true;
+    frameAt = now;
+    return false;
   }
 };
 

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 240 240" role="img" aria-labelledby="title description">
+  <title id="title">Animated stock goals preview with fixed total</title>
+  <desc id="description">Five abbreviated stock categories scroll upward without table lines. All text in each row uses the same large size. The total remains fixed at the bottom.</desc>
+  <rect width="240" height="240" fill="#000"/>
+  <defs>
+    <clipPath id="rows">
+      <rect x="0" y="27" width="240" height="163"/>
+    </clipPath>
+  </defs>
+  <g font-family="Inter Tight, Arial, sans-serif" font-weight="700">
+    <text x="5" y="9" fill="#fff" font-size="6">STOCK GOALS</text>
+    <text x="235" y="9" fill="#40e0d0" font-size="6" text-anchor="end">SCROLL ↑</text>
+    <g fill="#888" font-size="6">
+      <text x="4" y="21">NAME</text>
+      <text x="115" y="21" text-anchor="end">SHARE</text>
+      <text x="165" y="21" text-anchor="end">AMOUNT</text>
+      <text x="235" y="21" text-anchor="end">RETURN</text>
+    </g>
+    <g clip-path="url(#rows)">
+      <g>
+        <animateTransform attributeName="transform" type="translate"
+          values="0 0;0 0;0 -31;0 -31;0 -62;0 -62;0 -93;0 -93;0 -124;0 -124;0 -155;0 -155;0 -186;0 -186;0 -217;0 -217;0 -248"
+          keyTimes="0;0.09;0.12;0.21;0.24;0.33;0.36;0.45;0.48;0.57;0.60;0.69;0.72;0.81;0.84;0.93;1"
+          dur="12s" repeatCount="indefinite"/>
+        <g fill="#fff" font-variant-numeric="tabular-nums">
+          <text x="4" y="54" font-size="20">FIN</text><text x="115" y="54" font-size="20" text-anchor="end">11%</text><text x="165" y="54" font-size="20" text-anchor="end">11</text><text x="235" y="54" font-size="20" text-anchor="end" fill="#ff4d4d">+8.2%</text>
+          <text x="4" y="85" font-size="20">BIO</text><text x="115" y="85" font-size="20" text-anchor="end">10%</text><text x="165" y="85" font-size="20" text-anchor="end">11</text><text x="235" y="85" font-size="20" text-anchor="end" fill="#ff4d4d">+12.4%</text>
+          <text x="4" y="116" font-size="20">SEMI</text><text x="115" y="116" font-size="20" text-anchor="end">21%</text><text x="165" y="116" font-size="20" text-anchor="end">23</text><text x="235" y="116" font-size="20" text-anchor="end" fill="#ff4d4d">+18.7%</text>
+          <text x="4" y="147" font-size="20">AUTO</text><text x="115" y="147" font-size="20" text-anchor="end">4%</text><text x="165" y="147" font-size="20" text-anchor="end">4</text><text x="235" y="147" font-size="20" text-anchor="end" fill="#4d9dff">-3.1%</text>
+          <text x="4" y="178" font-size="20">CONS</text><text x="115" y="178" font-size="20" text-anchor="end">2%</text><text x="165" y="178" font-size="20" text-anchor="end">2</text><text x="235" y="178" font-size="20" text-anchor="end" fill="#ff4d4d">+4.5%</text>
+          <text x="4" y="209" font-size="20">MKT</text><text x="115" y="209" font-size="20" text-anchor="end">11%</text><text x="165" y="209" font-size="20" text-anchor="end">12</text><text x="235" y="209" font-size="20" text-anchor="end" fill="#4d9dff">-1.6%</text>
+          <text x="4" y="240" font-size="20">ENRG</text><text x="115" y="240" font-size="20" text-anchor="end">5%</text><text x="165" y="240" font-size="20" text-anchor="end">5</text><text x="235" y="240" font-size="20" text-anchor="end" fill="#ff4d4d">+6.8%</text>
+          <text x="4" y="271" font-size="20">TECH</text><text x="115" y="271" font-size="20" text-anchor="end">37%</text><text x="165" y="271" font-size="20" text-anchor="end">39</text><text x="235" y="271" font-size="20" text-anchor="end" fill="#ff4d4d">+15.2%</text>
+          <text x="4" y="302" font-size="20">FIN</text><text x="115" y="302" font-size="20" text-anchor="end">11%</text><text x="165" y="302" font-size="20" text-anchor="end">11</text><text x="235" y="302" font-size="20" text-anchor="end" fill="#ff4d4d">+8.2%</text>
+          <text x="4" y="333" font-size="20">BIO</text><text x="115" y="333" font-size="20" text-anchor="end">10%</text><text x="165" y="333" font-size="20" text-anchor="end">11</text><text x="235" y="333" font-size="20" text-anchor="end" fill="#ff4d4d">+12.4%</text>
+          <text x="4" y="364" font-size="20">SEMI</text><text x="115" y="364" font-size="20" text-anchor="end">21%</text><text x="165" y="364" font-size="20" text-anchor="end">23</text><text x="235" y="364" font-size="20" text-anchor="end" fill="#ff4d4d">+18.7%</text>
+          <text x="4" y="395" font-size="20">AUTO</text><text x="115" y="395" font-size="20" text-anchor="end">4%</text><text x="165" y="395" font-size="20" text-anchor="end">4</text><text x="235" y="395" font-size="20" text-anchor="end" fill="#4d9dff">-3.1%</text>
+          <text x="4" y="426" font-size="20">CONS</text><text x="115" y="426" font-size="20" text-anchor="end">2%</text><text x="165" y="426" font-size="20" text-anchor="end">2</text><text x="235" y="426" font-size="20" text-anchor="end" fill="#ff4d4d">+4.5%</text>
+        </g>
+      </g>
+    </g>
+    <g fill="#ffd900" font-variant-numeric="tabular-nums">
+      <text x="4" y="222" font-size="20">TOTAL</text>
+      <text x="115" y="222" font-size="20" text-anchor="end">100%</text>
+      <text x="165" y="222" font-size="20" text-anchor="end">108</text>
+      <text x="235" y="222" font-size="20" text-anchor="end" fill="#ff4d4d">+12.8%</text>
+    </g>
+  </g>
+</svg>

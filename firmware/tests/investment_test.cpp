@@ -67,7 +67,6 @@ const char kRetirementSheet[] =
     "14%,14%,2.채권,\"9,761,400\",\"-49,932\"\r\n"
     "27%,27%,3.혼합,\"18,922,045\",\"756,301\"\r\n"
     "7%,7%,4.원자재,\"4,860,890\",\"-987,040\"\r\n"
-    "0%,0%,5.리츠,0,0\r\n"
     "52%,52%,6.주식,\"37,031,659\",\"8,541,838\"\r\n"
     "100%,100%,총계,\"70,699,066\",\"8,261,167\"\r\n"
     "세부 투자목표\r\n"
@@ -122,6 +121,7 @@ int main() {
   assert(retirement.valid);
   assert(retirement.assets[0].holdings == 123072);
   assert(retirement.assets[1].profit == -49932);
+  assert(retirement.assets[4].holdings == 0);
   assert(retirement.assets[5].holdings == 37031659);
   assert(retirement.assets[6].holdings == 70699066);
   assert(retirement.assets[6].profit == 8261167);
@@ -245,21 +245,25 @@ int main() {
   assert(nativeRegions.total.profit == 300000);
 
   InvestmentPageCycle pages;
-  assert(!pages.advance(1000));
+  assert(!pages.advance(1000, 6));
   assert(pages.page == 0);
-  assert(!pages.advance(12999));
+  assert(!pages.advance(2499, 6));
   assert(pages.page == 0);
-  assert(pages.advance(13000));
+  assert(!pages.advance(2500, 6));
+  for (uint32_t now = 2580; now <= 4100; now += 80) {
+    assert(pages.advance(now, 6));
+  }
+  assert(pages.scrollIndex == 1);
+  assert(pages.scrollOffset == 0);
+  for (uint32_t now = 4180; now < 9000; now += 80) {
+    pages.advance(now, 6);
+  }
+  assert(pages.page == 0);
+  assert(pages.advance(9100, 6));
   assert(pages.page == 1);
-  assert(pages.advance(25000));
-  assert(pages.page == 2);
-  assert(pages.advance(37000));
-  assert(pages.page == 3);
-  assert(pages.advance(49000));
-  assert(pages.page == 4);
-  assert(pages.advance(61000));
-  assert(pages.page == 5);
-  assert(pages.advance(73000));
+  assert(pages.scrollIndex == 0);
+  assert(!pages.advance(10899, 4));
+  assert(pages.advance(10900, 4));
   assert(pages.page == 0);
 
   const char invalid[] =

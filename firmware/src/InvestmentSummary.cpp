@@ -6,8 +6,6 @@
 #include "RetirementModel.h"
 #include "WifiPower.h"
 #include "fonts/InterTightBold18.h"
-#include "fonts/InterTightBold24.h"
-#include "fonts/InterTightCompact13.h"
 
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
@@ -83,208 +81,248 @@ bool fetch(const char *url, Data &next, int &httpCode, Parser parser) {
   return ok;
 }
 
-void drawGrid(TFT_eSPI &display, uint8_t rows) {
-  display.drawRect(0, 0, 240, 240, TFT_WHITE);
-  display.drawFastVLine(80, 0, 240, TFT_WHITE);
-  display.drawFastVLine(160, 0, 240, TFT_WHITE);
-  for (uint8_t row = 1; row < rows; ++row) {
-    display.drawFastHLine(0, (row * 240) / rows, 240, TFT_WHITE);
+enum class InvestmentRowKind : uint8_t { Section, Data, Error };
+
+struct InvestmentDisplayRow {
+  const char *label = "";
+  int32_t holdings = 0;
+  int32_t profit = 0;
+  int32_t shareTotal = 0;
+  uint8_t actualRate = 0;
+  InvestmentRowKind kind = InvestmentRowKind::Data;
+  bool hasProfit = false;
+  bool usesActualRate = false;
+};
+
+constexpr uint8_t kInvestmentDisplayRowLimit = 22;
+constexpr int16_t kInvestmentFirstRowBaseline = 54;
+constexpr int16_t kInvestmentTotalBaseline = 222;
+
+void appendSection(InvestmentDisplayRow *rows, uint8_t &count,
+                   const char *label) {
+  if (count < kInvestmentDisplayRowLimit) {
+    rows[count].label = label;
+    rows[count++].kind = InvestmentRowKind::Section;
   }
 }
 
-void drawLabel(TFT_eSPI &display, const char *text, int16_t x,
-               int16_t baseline, uint16_t color) {
-  display.setTextColor(color, TFT_BLACK);
+void appendError(InvestmentDisplayRow *rows, uint8_t &count) {
+  if (count < kInvestmentDisplayRowLimit) {
+    rows[count].label = "ERROR";
+    rows[count++].kind = InvestmentRowKind::Error;
+  }
+}
+
+void appendData(InvestmentDisplayRow *rows, uint8_t &count, const char *label,
+                const InvestmentAmount &amount, int32_t shareTotal,
+                bool hasProfit) {
+  if (count >= kInvestmentDisplayRowLimit) return;
+  rows[count] = {label, amount.holdings, amount.profit, shareTotal, 0,
+                 InvestmentRowKind::Data, hasProfit, false};
+  ++count;
+}
+
+void appendGoal(InvestmentDisplayRow *rows, uint8_t &count, const char *label,
+                const InvestmentStockGoal &goal) {
+  if (count >= kInvestmentDisplayRowLimit) return;
+  rows[count] = {label, goal.holdings, 0, 0, goal.actualRate,
+                 InvestmentRowKind::Data, false, true};
+  ++count;
+}
+
+uint8_t collectInvestmentRows(bool retirement,
+                              InvestmentDisplayRow *rows) {
+  uint8_t count = 0;
+  if (retirement) {
+    if (!retirementSummary.valid) return 0;
+    static constexpr const char *kAssetNames[kRetirementAssetCount - 1] = {
+        "CASH", "BONDS", "MIXED", "MATER", "REITS", "STOCK"};
+    static constexpr const char *kRegionNames[kRetirementRegionCount] = {
+        "GLOBL", "US", "CHINA", "KOREA"};
+    static constexpr const char *kGoalNames[kRetirementStockGoalCount] = {
+        "VALUE", "GOLD", "HLTH", "MKT", "TECH"};
+    const InvestmentAmount &assetTotal =
+        retirementSummary.assets[kRetirementAssetCount - 1];
+
+    appendSection(rows, count, "ASSET");
+    for (uint8_t i = 0; i < kRetirementAssetCount - 1; ++i) {
+      appendData(rows, count, kAssetNames[i], retirementSummary.assets[i],
+                 assetTotal.holdings, true);
+    }
+    appendSection(rows, count, "REGION");
+    for (uint8_t i = 0; i < kRetirementRegionCount; ++i) {
+      appendData(rows, count, kRegionNames[i], retirementSummary.regions[i],
+                 retirementSummary.regionTotal.holdings, false);
+    }
+    appendData(rows, count, "TOTAL", retirementSummary.regionTotal,
+               retirementSummary.regionTotal.holdings, false);
+    appendSection(rows, count, "GOALS");
+    for (uint8_t i = 0; i < kRetirementStockGoalCount; ++i) {
+      appendGoal(rows, count, kGoalNames[i], retirementSummary.stockGoals[i]);
+    }
+    appendGoal(rows, count, "TOTAL", retirementSummary.stockGoalTotal);
+    return count;
+  }
+
+  static constexpr const char *kAssetNames[kInvestmentAssetCount - 1] = {
+      "BONDS", "MATER", "CRYPT", "REITS", "STOCK"};
+  static constexpr const char *kRegionNames[kInvestmentRegionCount] = {
+      "GLOBL", "US", "CHINA", "KOREA"};
+  static constexpr const char *kGoalNames[kInvestmentStockGoalCount] = {
+      "FIN", "BIO", "SEMI", "AUTO", "CONS", "MKT", "ENRG", "TECH"};
+
+  if (summary.valid) {
+    const InvestmentAmount &assetTotal =
+        summary.assets[kInvestmentAssetCount - 1];
+    appendSection(rows, count, "ASSET");
+    for (uint8_t i = 0; i < kInvestmentAssetCount - 1; ++i) {
+      appendData(rows, count, kAssetNames[i], summary.assets[i],
+                 assetTotal.holdings, true);
+    }
+  } else {
+    appendSection(rows, count, "ASSET");
+    appendError(rows, count);
+  }
+
+  if (regionSummary.valid) {
+    appendSection(rows, count, "REGION");
+    for (uint8_t i = 0; i < kInvestmentRegionCount; ++i) {
+      appendData(rows, count, kRegionNames[i], regionSummary.regions[i],
+                 regionSummary.total.holdings, true);
+    }
+    appendData(rows, count, "TOTAL", regionSummary.total,
+               regionSummary.total.holdings, true);
+  } else {
+    appendSection(rows, count, "REGION");
+    appendError(rows, count);
+  }
+
+  if (summary.stockGoals.valid) {
+    appendSection(rows, count, "GOALS");
+    for (uint8_t i = 0; i < kInvestmentStockGoalCount; ++i) {
+      appendGoal(rows, count, kGoalNames[i], summary.stockGoals.categories[i]);
+    }
+    appendGoal(rows, count, "TOTAL", summary.stockGoals.total);
+  } else {
+    appendSection(rows, count, "GOALS");
+    appendError(rows, count);
+  }
+  return count;
+}
+
+void drawHeader(TFT_eSPI &display, bool retirement) {
+  display.setTextFont(1);
+  display.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   display.setTextDatum(L_BASELINE);
-  display.setFreeFont(&InterTightCompact13);
-  display.drawString(text, x, baseline);
+  display.drawString(retirement ? "RETIREMENT" : "INVESTMENT", 4, 9);
+  display.setTextDatum(R_BASELINE);
+  display.drawString(retirement ? "2/2" : "1/2", 236, 9);
+  display.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  display.setTextDatum(L_BASELINE);
+  display.drawString("NAME", 4, 21);
+  display.setTextDatum(R_BASELINE);
+  display.drawString("SHARE", 100, 21);
+  display.drawString("AMOUNT", 158, 21);
+  display.drawString("RETURN", 236, 21);
 }
 
-void drawLargeValue(TFT_eSPI &display, const char *text, int16_t right,
-                    int16_t baseline, uint16_t color) {
-  display.setTextColor(color, TFT_BLACK);
-  display.setTextDatum(R_BASELINE);
-  display.setFreeFont(&InterTightBold24);
-  display.drawString(text, right, baseline);
-}
+void drawRow(TFT_eSPI &display, const InvestmentDisplayRow &row,
+             int16_t baseline, bool pinnedTotal = false) {
+  if (row.kind == InvestmentRowKind::Section) {
+    display.setTextFont(1);
+    display.setTextColor(TFT_CYAN, TFT_BLACK);
+    display.setTextDatum(L_BASELINE);
+    display.drawString(row.label, 4, baseline - 8);
+    return;
+  }
 
-void drawMediumValue(TFT_eSPI &display, const char *text, int16_t right,
-                     int16_t baseline, uint16_t color) {
-  display.setTextColor(color, TFT_BLACK);
-  display.setTextDatum(R_BASELINE);
+  const uint16_t baseColor = pinnedTotal ? TFT_YELLOW
+      : row.kind == InvestmentRowKind::Error ? TFT_ORANGE : TFT_WHITE;
+  char amount[16] = "--";
+  char share[8] = "--";
+  char returnText[16] = "--";
+  if (row.kind == InvestmentRowKind::Data) {
+    investmentFormatWholeMillions(row.holdings, amount, sizeof(amount));
+    if (row.usesActualRate) {
+      snprintf(share, sizeof(share), "%u%%", unsigned(row.actualRate));
+    } else if (!investmentFormatSharePercent(row.holdings, row.shareTotal,
+                                             share, sizeof(share))) {
+      strlcpy(share, "--", sizeof(share));
+    }
+    if (row.hasProfit &&
+        !investmentFormatProfit(row.profit, row.holdings,
+                                returnText, sizeof(returnText))) {
+      strlcpy(returnText, "--", sizeof(returnText));
+    }
+  }
+
+  const uint16_t returnColor = row.kind == InvestmentRowKind::Error
+      ? TFT_ORANGE
+      : !row.hasProfit ? TFT_LIGHTGREY
+      : row.profit > 0 ? TFT_RED
+      : row.profit < 0 ? TFT_BLUE
+      : pinnedTotal ? TFT_YELLOW : TFT_LIGHTGREY;
   display.setFreeFont(&InterTightBold18);
-  display.drawString(text, right, baseline);
+  display.setTextDatum(L_BASELINE);
+  display.setTextColor(baseColor, TFT_BLACK);
+  display.drawString(row.label, 4, baseline);
+  display.setTextDatum(R_BASELINE);
+  display.drawString(share, 100, baseline);
+  display.drawString(amount, 158, baseline);
+  display.setTextColor(returnColor, TFT_BLACK);
+  display.drawString(returnText, 236, baseline);
 }
 
-void drawSmallProfit(TFT_eSPI &display, int32_t profit, int32_t holdings,
-                     int16_t baseline, uint16_t color) {
-  char text[16];
-  if (!investmentFormatProfit(profit, holdings, text, sizeof(text))) {
-    strlcpy(text, "--", sizeof(text));
+void drawInvestmentPage(TFT_eSPI &display, bool retirement) {
+  display.fillScreen(TFT_BLACK);
+  drawHeader(display, retirement);
+  InvestmentDisplayRow rows[kInvestmentDisplayRowLimit]{};
+  const uint8_t count = collectInvestmentRows(retirement, rows);
+  if (!count) {
+    display.setFreeFont(&InterTightBold18);
+    display.setTextDatum(C_BASELINE);
+    const bool failed = retirement ? retirementFetchFailed : summaryFetchFailed;
+    display.setTextColor(failed ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK);
+    display.drawString(failed ? "FETCH FAILED" : "LOADING DATA", 120, 132);
+    return;
   }
-  drawLabel(display, text, 4, baseline, color);
-}
 
-void drawAssetPage(TFT_eSPI &display) {
-  static constexpr const char *kAssetNames[kInvestmentAssetCount] = {
-      "BONDS", "MATERIAL", "CRYPTO", "REITS", "STOCKS", "TOTAL"};
-  const int32_t total = summary.assets[kInvestmentAssetCount - 1].holdings;
-  drawGrid(display, kInvestmentAssetCount);
-  for (uint8_t i = 0; i < kInvestmentAssetCount; ++i) {
-    const InvestmentAmount &amount = summary.assets[i];
-    const bool totalRow = i == kInvestmentAssetCount - 1;
-    const int16_t top = i * 40;
-    const uint16_t labelColor = totalRow ? TFT_YELLOW : TFT_WHITE;
-    const uint16_t profitColor = totalRow ? TFT_YELLOW : amount.profit > 0
-        ? TFT_RED : amount.profit < 0 ? TFT_BLUE : TFT_LIGHTGREY;
-    char holding[16];
-    char share[8];
-    investmentFormatWholeMillions(amount.holdings, holding, sizeof(holding));
-    if (!investmentFormatSharePercent(amount.holdings, total, share, sizeof(share))) {
-      strlcpy(share, "--", sizeof(share));
-    }
-
-    drawLabel(display, kAssetNames[i], 4, top + 15, labelColor);
-    drawSmallProfit(display, amount.profit, amount.holdings, top + 30, profitColor);
-    drawLargeValue(display, holding, 156, top + 30, labelColor);
-    drawLargeValue(display, share, 236, top + 30, labelColor);
+  for (uint8_t slot = 0; slot < kInvestmentVisibleRows; ++slot) {
+    const uint8_t index = pageCycle.scrollIndex + slot;
+    if (index >= count) break;
+    const int16_t baseline = kInvestmentFirstRowBaseline +
+        slot * kInvestmentScrollRowHeight - pageCycle.scrollOffset;
+    if (baseline < 43 || baseline > 184) continue;
+    drawRow(display, rows[index], baseline);
   }
-}
 
-void drawRegionsPage(TFT_eSPI &display) {
-  static constexpr const char *kRegionNames[kInvestmentRegionCount + 1] = {
-      "GLOBAL", "U.S.", "CHINA", "KOREA", "TOTAL"};
-  drawGrid(display, kInvestmentRegionCount + 1);
-  for (uint8_t i = 0; i <= kInvestmentRegionCount; ++i) {
-    const bool totalRow = i == kInvestmentRegionCount;
-    const InvestmentAmount &amount = totalRow
-        ? regionSummary.total : regionSummary.regions[i];
-    const int16_t top = i * 48;
-    const uint16_t labelColor = totalRow ? TFT_YELLOW : TFT_WHITE;
-    const uint16_t profitColor = totalRow ? TFT_YELLOW : amount.profit > 0
-        ? TFT_RED : amount.profit < 0 ? TFT_BLUE : TFT_LIGHTGREY;
-    char holding[16];
-    char share[8];
-    investmentFormatWholeMillions(amount.holdings, holding, sizeof(holding));
-    if (!investmentFormatSharePercent(amount.holdings,
-            regionSummary.total.holdings, share, sizeof(share))) {
-      strlcpy(share, "--", sizeof(share));
-    }
-
-    drawLabel(display, kRegionNames[i], 4, top + 17, labelColor);
-    drawSmallProfit(display, amount.profit, amount.holdings, top + 34, profitColor);
-    drawLargeValue(display, holding, 156, top + 35, labelColor);
-    drawLargeValue(display, share, 236, top + 35, labelColor);
+  if (retirement) {
+    const InvestmentAmount &total =
+        retirementSummary.assets[kRetirementAssetCount - 1];
+    drawRow(display, {"TOTAL", total.holdings, total.profit, total.holdings,
+                      100, InvestmentRowKind::Data, true, false},
+            kInvestmentTotalBaseline, true);
+  } else if (summary.valid) {
+    const InvestmentAmount &total = summary.assets[kInvestmentAssetCount - 1];
+    drawRow(display, {"TOTAL", total.holdings, total.profit, total.holdings,
+                      100, InvestmentRowKind::Data, true, false},
+            kInvestmentTotalBaseline, true);
   }
 }
 
-void drawStockGoalsPage(TFT_eSPI &display) {
-  static constexpr const char *kStockGoalNames[kInvestmentStockGoalCount + 1] = {
-      "FIN/VALUE", "BIO/HLTH", "SEMIS", "IND/AUTO", "CONSUMER",
-      "MARKET", "ENERGY", "AI/TECH", "TOTAL"};
-  const InvestmentStockGoals &goals = summary.stockGoals;
-  drawGrid(display, kInvestmentStockGoalCount + 1);
-  for (uint8_t i = 0; i <= kInvestmentStockGoalCount; ++i) {
-    const bool totalRow = i == kInvestmentStockGoalCount;
-    const InvestmentStockGoal &goal = totalRow
-        ? goals.total : goals.categories[i];
-    const int16_t top = (i * 240) / (kInvestmentStockGoalCount + 1);
-    const int16_t baseline = top + 19;
-    const uint16_t color = totalRow ? TFT_YELLOW : TFT_WHITE;
-    char holding[16];
-    char actualRate[8];
-    investmentFormatWholeMillions(goal.holdings, holding, sizeof(holding));
-    snprintf(actualRate, sizeof(actualRate), "%u%%",
-        static_cast<unsigned>(goal.actualRate));
-
-    drawLabel(display, kStockGoalNames[i], 4, top + 15, color);
-    drawLargeValue(display, holding, 156, baseline, color);
-    drawLargeValue(display, actualRate, 236, baseline, color);
-  }
-}
-
-void drawRetirementAssetsPage(TFT_eSPI &display) {
-  static constexpr const char *kAssetNames[kRetirementAssetCount] = {
-      "CASH", "BONDS", "MIXED", "MATERIAL", "REITS", "STOCKS", "TOTAL"};
-  const int32_t total =
-      retirementSummary.assets[kRetirementAssetCount - 1].holdings;
-  drawGrid(display, kRetirementAssetCount);
-  for (uint8_t i = 0; i < kRetirementAssetCount; ++i) {
-    const InvestmentAmount &amount = retirementSummary.assets[i];
-    const bool totalRow = i == kRetirementAssetCount - 1;
-    const int16_t top = (i * 240) / kRetirementAssetCount;
-    const uint16_t labelColor = totalRow ? TFT_YELLOW : TFT_WHITE;
-    const uint16_t profitColor = totalRow ? TFT_YELLOW : amount.profit > 0
-        ? TFT_RED : amount.profit < 0 ? TFT_BLUE : TFT_LIGHTGREY;
-    char holding[16];
-    char share[8];
-    investmentFormatWholeMillions(amount.holdings, holding, sizeof(holding));
-    if (!investmentFormatSharePercent(amount.holdings, total, share, sizeof(share))) {
-      strlcpy(share, "--", sizeof(share));
-    }
-
-    drawLabel(display, kAssetNames[i], 4, top + 13, labelColor);
-    drawSmallProfit(display, amount.profit, amount.holdings, top + 27, profitColor);
-    drawMediumValue(display, holding, 156, top + 28, labelColor);
-    drawMediumValue(display, share, 236, top + 28, labelColor);
-  }
-}
-
-void drawRetirementRegionsPage(TFT_eSPI &display) {
-  static constexpr const char *kRegionNames[kRetirementRegionCount + 1] = {
-      "GLOBAL", "U.S.", "CHINA", "KOREA", "TOTAL"};
-  drawGrid(display, kRetirementRegionCount + 1);
-  for (uint8_t i = 0; i <= kRetirementRegionCount; ++i) {
-    const bool totalRow = i == kRetirementRegionCount;
-    const InvestmentAmount &amount = totalRow
-        ? retirementSummary.regionTotal : retirementSummary.regions[i];
-    const int16_t top = (i * 240) / (kRetirementRegionCount + 1);
-    const uint16_t color = totalRow ? TFT_YELLOW : TFT_WHITE;
-    char holding[16];
-    char share[8];
-    investmentFormatWholeMillions(amount.holdings, holding, sizeof(holding));
-    if (!investmentFormatSharePercent(amount.holdings,
-            retirementSummary.regionTotal.holdings, share, sizeof(share))) {
-      strlcpy(share, "--", sizeof(share));
-    }
-
-    drawLabel(display, kRegionNames[i], 4, top + 17, color);
-    drawLargeValue(display, holding, 156, top + 35, color);
-    drawLargeValue(display, share, 236, top + 35, color);
-  }
-}
-
-void drawRetirementStockGoalsPage(TFT_eSPI &display) {
-  static constexpr const char *kStockGoalNames[kRetirementStockGoalCount + 1] = {
-      "VALUE", "GOLD", "HEALTH", "MARKET", "AI/TECH", "TOTAL"};
-  const uint8_t rows = kRetirementStockGoalCount + 1;
-  drawGrid(display, rows);
-  for (uint8_t i = 0; i < rows; ++i) {
-    const bool totalRow = i == kRetirementStockGoalCount;
-    const InvestmentStockGoal &goal = totalRow
-        ? retirementSummary.stockGoalTotal : retirementSummary.stockGoals[i];
-    const int16_t top = (i * 240) / rows;
-    const uint16_t color = totalRow ? TFT_YELLOW : TFT_WHITE;
-    char holding[16];
-    char actualRate[8];
-    investmentFormatWholeMillions(goal.holdings, holding, sizeof(holding));
-    snprintf(actualRate, sizeof(actualRate), "%u%%",
-        static_cast<unsigned>(goal.actualRate));
-
-    drawLabel(display, kStockGoalNames[i], 4, top + 15, color);
-    drawLargeValue(display, holding, 156, top + 30, color);
-    drawLargeValue(display, actualRate, 236, top + 30, color);
-  }
-}
 }
 
 bool investmentPoll(uint32_t now) {
   if (summaryRefresh.due(now)) {
     InvestmentSummary next{};
-    const bool success = fetch(kInvestmentCsvUrl, next, summaryHttpCode,
+    const bool parsed = fetch(kInvestmentCsvUrl, next, summaryHttpCode,
         [](Stream &stream, InvestmentSummary &data) {
           return investmentParseCsv(stream, data);
         });
+    const bool success = parsed && next.stockGoals.valid;
+    if (parsed && !next.stockGoals.valid) {
+      Serial.println(F("Investment stock goals are incomplete"));
+    }
     summaryRefresh.complete(millis(), success);
     summaryFetchFailed = !success;
     if (success) {
@@ -325,36 +363,13 @@ bool investmentPoll(uint32_t now) {
 }
 
 bool investmentAdvance(uint32_t now) {
-  return pageCycle.advance(now);
+  InvestmentDisplayRow rows[kInvestmentDisplayRowLimit]{};
+  const uint8_t count = collectInvestmentRows(pageCycle.page == 1, rows);
+  return pageCycle.advance(now, count);
 }
 
 void investmentDraw(TFT_eSPI &display) {
-  display.fillScreen(TFT_BLACK);
-  const bool retirementPage = pageCycle.page >= 3;
-  const bool valid = pageCycle.page == 1 ? regionSummary.valid
-      : pageCycle.page == 2 ? summary.stockGoals.valid
-      : retirementPage ? retirementSummary.valid : summary.valid;
-  const bool failed = pageCycle.page == 1 ? regionFetchFailed
-      : pageCycle.page == 2 ? summaryFetchFailed || summary.valid
-      : retirementPage ? retirementFetchFailed : summaryFetchFailed;
-  if (!valid) {
-    display.setTextColor(failed ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK);
-    display.setFreeFont(&InterTightBold18);
-    display.setTextDatum(C_BASELINE);
-    display.drawString(failed ? "FETCH FAILED" : "LOADING DATA", 120, 137);
-  } else if (pageCycle.page == 1) {
-    drawRegionsPage(display);
-  } else if (pageCycle.page == 2) {
-    drawStockGoalsPage(display);
-  } else if (pageCycle.page == 3) {
-    drawRetirementAssetsPage(display);
-  } else if (pageCycle.page == 4) {
-    drawRetirementRegionsPage(display);
-  } else if (pageCycle.page == 5) {
-    drawRetirementStockGoalsPage(display);
-  } else {
-    drawAssetPage(display);
-  }
+  drawInvestmentPage(display, pageCycle.page == 1);
 }
 
 bool investmentTargetValid() { return summary.valid; }

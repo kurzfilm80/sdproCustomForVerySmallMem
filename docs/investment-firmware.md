@@ -1,17 +1,17 @@
 # SD PRO investment-summary firmware
 
-The separate `sdpro-investment` profile rotates through six data-only pages:
-three investment pages followed by three retirement-account pages. Asset pages
-use a three-column grid for the label and P/L percentage, holding amount in
-rounded whole millions of KRW, and share of the page total. Regional and
-subcategory goal pages show holdings and their allocation rate. P/L percentages
-are calculated against cost basis (`P/L / (holdings - P/L)`).
+The separate `sdpro-investment` profile rotates between two account pages:
+**INVESTMENT** and **RETIREMENT**. Each page combines its asset classes,
+regional holdings and stock-goal allocations in one bottom-to-top scrolling
+list. Four rows scroll at a time; the account's asset total remains fixed at
+the bottom. There are no table rules, and category labels are abbreviated to
+five characters or fewer.
 
-| Investment assets | Investment regions | Investment stock goals |
-| :---: | :---: | :---: |
-| ![Expected SD PRO asset summary](./assets/investment-inline-preview-summary.svg) | ![Expected SD PRO stock-region summary](./assets/investment-inline-preview-regions.svg) | ![Expected SD PRO stock subcategory goals](./assets/investment-stock-goals-preview.svg) |
-| **Retirement assets** | **Retirement regions** | **Retirement stock goals** |
-| ![Expected SD PRO retirement asset summary](./assets/retirement-summary-preview.svg) | ![Expected SD PRO retirement stock-region goals](./assets/retirement-regions-preview.svg) | ![Expected SD PRO retirement stock subcategory goals](./assets/retirement-stock-goals-preview.svg) |
+Amounts are rounded to whole millions of KRW. SHARE uses the published
+allocation rate for goals and the corresponding account total for assets and
+regions. Available cost-basis returns (`P/L / (holdings - P/L)`) are red when
+positive and blue when negative. Return is shown as `--` where the source does
+not provide profit data.
 
 ## Build and install
 
@@ -23,11 +23,13 @@ No upload is performed by building the image.
 
 Open the shared device portal at `/` to configure Wi-Fi and firmware updates.
 The display fetches the investment goals and investment details worksheets,
-plus the retirement goals worksheet, after Wi-Fi connects. It rotates pages
-every 12 seconds, refreshes each worksheet every six hours, and retries failures
-with a capped backoff of up to five minutes. A failed refresh keeps that page's last
-successful values visible. `/api/v1/status` reports the individual fetch states
-as `investment*`, `investmentRegions*`, and `investmentRetirement*` fields.
+plus the retirement goals worksheet, after Wi-Fi connects. Each account stays
+on screen until its full list has scrolled, then the other account appears.
+Each worksheet refreshes every six hours and retries failures with a capped
+backoff of up to five minutes. A failed refresh retains its last successful
+values; incomplete stock-goal data is retried rather than counted as a
+successful refresh. `/api/v1/status` reports the individual fetch states as
+`investment*`, `investmentRegions*`, and `investmentRetirement*` fields.
 Requests are synchronous with a six-second timeout, so a slow connection can
 briefly delay local web and OTA handling.
 
@@ -46,7 +48,9 @@ Retirement pages use the published **Investment Goals** worksheet
 (`gid=827857148`) from the retirement workbook. It provides the retirement asset
 summary, stock-region totals and detailed stock-goal allocations. The three
 retirement pages display asset P/L, regional stock allocation and detailed
-stock-category allocation, respectively.
+stock-category allocation, respectively. If the retirement worksheet omits a
+zero-valued asset category, the firmware treats it as zero only when the
+reported asset total still matches the parsed categories.
 
 Both workbooks are publicly published. Anyone with access to their published
 URLs may be able to read their contents; do not use this build with sheets that

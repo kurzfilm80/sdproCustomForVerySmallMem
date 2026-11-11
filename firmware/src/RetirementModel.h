@@ -141,8 +141,7 @@ inline bool retirementParseGoalsCsv(Input &input, RetirementSummary &out) {
         for (uint8_t i = 0; i < kRetirementAssetCount - 1; ++i) {
           holdingsSum += parsed.assets[i].holdings;
         }
-        if (foundAssets != 0x3F ||
-            !investmentParseAmount(row.fields[assetColumns.holdings],
+        if (!investmentParseAmount(row.fields[assetColumns.holdings],
                                    parsed.assets[kRetirementAssetCount - 1].holdings) ||
             !investmentParseAmount(row.fields[assetColumns.profit],
                                    parsed.assets[kRetirementAssetCount - 1].profit) ||
