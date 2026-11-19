@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img">
+  <title>SD PRO bootstrap Wi-Fi setup display preview</title>
+  <rect width="240" height="240" fill="#000"/>
+  <g font-family="Arial, sans-serif" text-anchor="middle">
+    <text x="120" y="51" font-size="26" fill="#0ff">SD PRO</text>
+    <text x="120" y="103" font-size="16" fill="#fff">Connect Wi-Fi:</text>
+    <text x="120" y="131" font-size="16" fill="#fff">SDPRO-Weather-Installer</text>
+    <text x="120" y="195" font-size="26" fill="#ff0">192.168.4.1</text>
+  </g>
+</svg>
