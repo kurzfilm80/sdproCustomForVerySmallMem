@@ -16,7 +16,7 @@ out = root / '.cache/tests'
 out.mkdir(parents=True, exist_ok=True)
 # LeakSanitizer cannot enumerate processes in the managed execution sandbox.
 env = dict(os.environ, ASAN_OPTIONS='detect_leaks=0')
-for name in ['wifi_power', 'ticker', 'investment', 'wifi_retry', 'time_format', 'forecast_labels', 'air_quality', 'api_refresh', 'display_settings', 'city_settings', 'stored_config']:
+for name in ['wifi_power', 'ticker', 'investment', 'investment_profit', 'wifi_retry', 'time_format', 'forecast_labels', 'air_quality', 'api_refresh', 'display_settings', 'city_settings', 'stored_config']:
     binary = out / name
     sources = [str(firmware / f'tests/{name}_test.cpp')]
     if name in ['stored_config', 'display_settings', 'city_settings']:
@@ -26,6 +26,14 @@ for name in ['wifi_power', 'ticker', 'investment', 'wifi_retry', 'time_format', 
                     *extra_includes, '-I', str(firmware / 'src'), '-I', str(headers), *sources, '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env=env)
     print(f'PASS: {name}', flush=True)
+# Exercise the shared ESP8266 CSV workspace across sequential account parses.
+binary = out / 'investment_workspace'
+subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                '-fsanitize=address,undefined', '-g', '-DESP8266',
+                '-I', str(firmware / 'src'),
+                str(firmware / 'tests/investment_test.cpp'), '-o', str(binary)], check=True)
+subprocess.run([str(binary)], check=True, env=env)
+print('PASS: investment shared ESP8266 workspace', flush=True)
 for script in ['city_portal_test.cjs', 'ticker_portal_test.cjs']:
     subprocess.run(['node', f'tests/{script}'], cwd=firmware, check=True)
 for script in ['display_layout_test.py', 'ticker_layout_test.py', 'investment_layout_test.py', 'api_urls_test.py', 'export_firmware_test.py']:

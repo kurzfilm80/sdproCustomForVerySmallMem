@@ -12,22 +12,36 @@ constexpr uint16_t kInvestmentCsvByteLimit = 16384;
 constexpr uint16_t kInvestmentCsvRowLimit = 2048;
 constexpr uint8_t kInvestmentRegionCount = 4;
 constexpr uint8_t kInvestmentStockGoalCount = 8;
-constexpr uint8_t kInvestmentPageCount = 2;
+constexpr uint8_t kInvestmentPageCount = 3;
 constexpr uint8_t kInvestmentVisibleRows = 4;
-constexpr uint8_t kInvestmentScrollRowHeight = 40;
+constexpr uint8_t kInvestmentScrollRowHeight = 36;
 constexpr uint8_t kInvestmentScrollPixelsPerFrame = 2;
 constexpr uint16_t kInvestmentScrollFrameMs = 80;
 constexpr uint16_t kInvestmentScrollPauseMs = 1500;
-constexpr uint16_t kInvestmentPageEndPauseMs = 1800;
+constexpr uint16_t kInvestmentPageEndPauseMs = 1500;
+constexpr uint16_t kInvestmentStaticPageMs = 10000;
 
 struct InvestmentAmount {
   int32_t holdings = 0;
   int32_t profit = 0;
 };
 
+inline bool investmentApplyRoundingResidual(int32_t &holdings, int32_t &profit,
+                                            int64_t holdingDelta, int64_t profitDelta) {
+  const int64_t nextHoldings = int64_t(holdings) + holdingDelta;
+  const int64_t nextProfit = int64_t(profit) + profitDelta;
+  if (nextHoldings < 0 || nextHoldings > INT32_MAX ||
+      nextProfit < INT32_MIN || nextProfit > INT32_MAX) return false;
+  holdings = int32_t(nextHoldings);
+  profit = int32_t(nextProfit);
+  return true;
+}
+
 struct InvestmentStockGoal {
   int32_t holdings = 0;
   uint8_t actualRate = 0;
+  int32_t profit = 0;
+  bool hasProfit = false;
 };
 
 struct InvestmentStockGoals {
@@ -36,16 +50,17 @@ struct InvestmentStockGoals {
   bool valid = false;
 };
 
-struct InvestmentSummary {
-  InvestmentAmount assets[kInvestmentAssetCount]{};
-  InvestmentStockGoals stockGoals{};
-  bool valid = false;
-};
-
 struct InvestmentRegionSummary {
   InvestmentAmount regions[kInvestmentRegionCount]{};
   InvestmentAmount total{};
   bool valid = false;
+};
+
+struct InvestmentSummary {
+  InvestmentAmount assets[kInvestmentAssetCount]{};
+  InvestmentStockGoals stockGoals{};
+  bool valid = false;
+  InvestmentRegionSummary regions{};
 };
 
 struct InvestmentPageCycle {
@@ -56,43 +71,56 @@ struct InvestmentPageCycle {
   uint32_t frameAt = 0;
   bool scrolling = false;
   bool started = false;
+  uint8_t completedPasses = 0;
+  uint8_t previousRowCount = 0;
 
   bool advance(uint32_t now, uint8_t rowCount) {
     if (!started) {
       started = true;
+      previousRowCount = rowCount;
       changedAt = frameAt = now;
       return false;
     }
 
     const uint8_t lastScrollIndex = rowCount > kInvestmentVisibleRows
         ? rowCount - kInvestmentVisibleRows : 0;
-    if (scrollIndex > lastScrollIndex) {
-      scrollIndex = lastScrollIndex;
-      scrollOffset = 0;
+    // Restart timing when asynchronous data changes the visible list.
+    if (rowCount != previousRowCount) {
+      previousRowCount = rowCount;
+      scrollIndex = scrollOffset = completedPasses = 0;
       scrolling = false;
-      changedAt = now;
+      changedAt = frameAt = now;
+    }
+
+    if (!lastScrollIndex || completedPasses == 2) {
+      const uint32_t pause = !lastScrollIndex
+          ? kInvestmentStaticPageMs : kInvestmentPageEndPauseMs;
+      if (now - changedAt < pause) return false;
+      page = (page + 1) % kInvestmentPageCount;
+      scrollIndex = scrollOffset = completedPasses = 0;
+      previousRowCount = 0;
+      scrolling = false;
+      changedAt = frameAt = now;
       return true;
     }
 
     if (scrolling) {
       if (now - frameAt < kInvestmentScrollFrameMs) return false;
       frameAt = now;
+      if (scrollIndex == lastScrollIndex) {
+        // Return directly to the first window without an inter-pass pause.
+        scrollIndex = 0;
+        return true;
+      }
       scrollOffset += kInvestmentScrollPixelsPerFrame;
       if (scrollOffset >= kInvestmentScrollRowHeight) {
         scrollOffset = 0;
         ++scrollIndex;
-        scrolling = false;
-        changedAt = now;
+        if (scrollIndex == lastScrollIndex && ++completedPasses == 2) {
+          scrolling = false;
+          changedAt = now;
+        }
       }
-      return true;
-    }
-
-    if (scrollIndex == lastScrollIndex) {
-      if (now - changedAt < kInvestmentPageEndPauseMs) return false;
-      page = (page + 1) % kInvestmentPageCount;
-      scrollIndex = 0;
-      scrollOffset = 0;
-      changedAt = frameAt = now;
       return true;
     }
 
@@ -103,11 +131,56 @@ struct InvestmentPageCycle {
   }
 };
 
+struct InvestmentNameHash {
+  uint64_t value = 14695981039346656037ULL;
+  uint16_t spaces = 0;
+  bool started = false;
+  void append(uint8_t c) {
+    if (c == ' ') {
+      if (started) ++spaces;
+      return;
+    }
+    while (spaces) { value = (value ^ uint8_t(' ')) * 1099511628211ULL; --spaces; }
+    value = (value ^ c) * 1099511628211ULL;
+    started = true;
+  }
+  uint64_t finish() const { return started ? value : 0; }
+};
+
+struct InvestmentProductList {
+  uint64_t hashes[32]{};
+  uint8_t count = 0;
+  bool overflow = false;
+  InvestmentNameHash token{};
+  void finish() {
+    const uint64_t hash = token.finish();
+    if (hash) {
+      if (count < 32) hashes[count++] = hash;
+      else overflow = true;
+    }
+    token = InvestmentNameHash{};
+  }
+  void append(uint8_t c) {
+    if (c == '|') finish();
+    else token.append(c);
+  }
+};
+
 struct InvestmentCsvRow {
+  uint64_t productHashes[2]{};
   char fields[kInvestmentCsvFieldLimit][kInvestmentCsvFieldLength]{};
   bool truncated[kInvestmentCsvFieldLimit]{};
   uint8_t count = 0;
 };
+
+// CSV parsing is synchronous on ESP8266. Share one row across all account
+// parsers so TLS stream reads keep room on the 4 KiB continuation stack.
+#ifdef ESP8266
+inline InvestmentCsvRow &investmentCsvWorkspace() {
+  static InvestmentCsvRow row;
+  return row;
+}
+#endif
 
 template <typename Input>
 inline auto investmentCsvReadByte(Input &input, uint8_t &value, int)
@@ -125,8 +198,10 @@ class InvestmentCsvReader {
  public:
   explicit InvestmentCsvReader(Input &input) : input_(input) {}
 
-  bool next(InvestmentCsvRow &row) {
+  bool next(InvestmentCsvRow &row, InvestmentProductList *products = nullptr) {
     row = InvestmentCsvRow{};
+    InvestmentNameHash productHash;
+    if (products) *products = InvestmentProductList{};
     uint16_t column = 0;
     uint16_t fieldLength = 0;
     uint16_t rowLength = 0;
@@ -136,6 +211,9 @@ class InvestmentCsvReader {
     bool afterQuoted = false;
 
     const auto finishField = [&]() {
+      if (column == 2 || column == 9) row.productHashes[column == 2 ? 0 : 1] = productHash.finish();
+      if (products && column == 9) products->finish();
+      productHash = InvestmentNameHash{};
       if (column < kInvestmentCsvFieldLimit) {
         row.fields[column][fieldLength] = '\0';
         row.truncated[column] = fieldTruncated;
@@ -149,6 +227,8 @@ class InvestmentCsvReader {
       return true;
     };
     const auto append = [&](char value) {
+      if (column == 2 || column == 9) productHash.append(uint8_t(value));
+      if (products && column == 9) products->append(uint8_t(value));
       if (column >= kInvestmentCsvFieldLimit) {
         fieldStarted = true;
         return true;
@@ -307,6 +387,7 @@ struct InvestmentColumns {
 };
 
 struct InvestmentStockGoalColumns {
+  int8_t profit = -1;
   int8_t category = -1;
   int8_t holdings = -1;
   int8_t actualRate = -1;
@@ -334,12 +415,14 @@ inline bool investmentFindColumns(const InvestmentCsvRow &row,
     if (columns.holdings < 0 &&
         (investmentHeaderColumn(field, "보유금액의 SUM", "holdings") ||
          investmentHeaderColumn(field, "금액의 SUM", "amount") ||
+         investmentHeaderEquals(field, "평가금액의 SUM") ||
          investmentHeaderEquals(field, "holdings sum") ||
          investmentHeaderEquals(field, "holding amount"))) columns.holdings = i;
     if (columns.profit < 0 &&
         (investmentHeaderColumn(field, "수익액의 SUM", "profit") ||
          investmentHeaderColumn(field, "예상수익액의 SUM", "expected profit") ||
-         investmentHeaderEquals(field, "profit sum"))) {
+         investmentHeaderEquals(field, "profit sum") ||
+         investmentHeaderEquals(field, "평가손익의 SUM"))) {
       columns.profit = i;
     }
   }
@@ -360,6 +443,10 @@ inline bool investmentFindStockGoalColumns(
     if (columns.holdings < 0 &&
         investmentHeaderColumn(field, "보유금액의 SUM", "holdings")) {
       columns.holdings = i;
+    }
+    if (columns.profit < 0 &&
+        investmentHeaderColumn(field, "수익액의 SUM", "profit")) {
+      columns.profit = i;
     }
     if (columns.actualRate < 0 &&
         (investmentHeaderColumn(field, "실투율", "actual rate") ||
@@ -432,6 +519,10 @@ inline bool investmentParseCsv(Input &input, InvestmentSummary &out) {
   InvestmentCsvReader<Input> reader(input);
   InvestmentSummary parsed{};
   InvestmentColumns columns;
+  InvestmentColumns detailColumns;
+  bool inDetails = false;
+  bool foundDetailHeader = false;
+  uint8_t foundDetailRegions = 0;
   InvestmentStockGoalColumns stockGoalColumns;
   uint8_t foundAssets = 0;
   uint8_t foundStockGoals = 0;
@@ -442,17 +533,55 @@ inline bool investmentParseCsv(Input &input, InvestmentSummary &out) {
   bool stockGoalSectionFailed = false;
 
   for (uint8_t rowIndex = 0; rowIndex < 96; ++rowIndex) {
+#ifdef ESP8266
+    InvestmentCsvRow &row = investmentCsvWorkspace();
+#else
     InvestmentCsvRow row;
+#endif
     if (!reader.next(row)) {
       if (reader.eof()) break;
       return false;
     }
 
+    if (investmentCellEquals(row, 0, "세부 투자목표") ||
+        investmentCellEquals(row, 0, "detailed investment goals")) {
+      inTargetSection = false;
+      inDetails = true;
+      continue;
+    }
+    if (investmentCellEquals(row, 0, "주식 투자목표") ||
+        investmentCellEquals(row, 0, "stock investment goals")) {
+      inDetails = false;
+      continue;
+    }
     if (investmentCellEquals(row, 0, "주식 세부투자목표") ||
         investmentCellEquals(row, 0, "stock detailed investment goals")) {
       inTargetSection = false;
+      inDetails = false;
       inStockGoalSection = true;
       foundStockGoalHeader = false;
+      continue;
+    }
+    if (inDetails) {
+      if (!foundDetailHeader) {
+        foundDetailHeader = investmentFindColumns(row, detailColumns) &&
+                            detailColumns.category >= 0;
+        continue;
+      }
+      if (detailColumns.asset >= row.count || detailColumns.category >= row.count) continue;
+      const char *asset = row.fields[detailColumns.asset];
+      if (!(asset[0] == '5' && asset[1] == '.')) continue;
+      const int8_t region = investmentRegionIndex(row.fields[detailColumns.category]);
+      if (region < 0) continue;
+      if (detailColumns.holdings >= row.count || detailColumns.profit >= row.count ||
+          row.truncated[detailColumns.asset] || row.truncated[detailColumns.category] ||
+          row.truncated[detailColumns.holdings] || row.truncated[detailColumns.profit]) return false;
+      InvestmentAmount value;
+      if (!investmentParseAmount(row.fields[detailColumns.holdings], value.holdings) ||
+          !investmentParseAmount(row.fields[detailColumns.profit], value.profit) ||
+          value.holdings < 0 || (foundDetailRegions & (1U << region))) return false;
+      parsed.regions.regions[region] = value;
+      foundDetailRegions |= uint8_t(1U << region);
       continue;
     }
     if (!inTargetSection) {
@@ -479,23 +608,39 @@ inline bool investmentParseCsv(Input &input, InvestmentSummary &out) {
           continue;
         }
 
+        int32_t profit = 0;
+        const bool hasProfit = stockGoalColumns.profit >= 0;
+        if (hasProfit && (stockGoalColumns.profit >= row.count ||
+            row.truncated[stockGoalColumns.profit] ||
+            !investmentParseAmount(row.fields[stockGoalColumns.profit], profit))) {
+          stockGoalSectionFailed = true;
+          inStockGoalSection = false;
+          continue;
+        }
         const char *category = row.fields[stockGoalColumns.category];
         if (!category[0]) continue;
         int32_t holdings = 0;
         uint8_t actualRate = 0;
         if (investmentIsTotal(category)) {
           int64_t holdingsSum = 0;
+          int64_t profitSum = 0;
           for (const InvestmentStockGoal &goal : parsed.stockGoals.categories) {
             holdingsSum += goal.holdings;
+            profitSum += goal.profit;
           }
           const bool validTotal =
               foundStockGoals == ((1U << kInvestmentStockGoalCount) - 1) &&
               investmentParseAmount(row.fields[stockGoalColumns.holdings], holdings) &&
               investmentParsePercent(row.fields[stockGoalColumns.actualRate], actualRate) &&
-              holdings >= 0 && holdingsSum == holdings && actualRate == 100;
+              holdings >= 0 && actualRate == 100 &&
+              holdingsSum - holdings <= 4 && holdings - holdingsSum <= 4 &&
+              (!hasProfit || (profitSum - profit <= 4 && profit - profitSum <= 4)) &&
+              holdingsSum <= INT32_MAX && profitSum >= INT32_MIN && profitSum <= INT32_MAX;
           if (validTotal) {
-            parsed.stockGoals.total.holdings = holdings;
+            parsed.stockGoals.total.holdings = int32_t(holdingsSum);
             parsed.stockGoals.total.actualRate = actualRate;
+            parsed.stockGoals.total.profit = int32_t(profitSum);
+            parsed.stockGoals.total.hasProfit = hasProfit;
             parsed.stockGoals.valid = true;
           } else {
             stockGoalSectionFailed = true;
@@ -516,7 +661,7 @@ inline bool investmentParseCsv(Input &input, InvestmentSummary &out) {
           inStockGoalSection = false;
           continue;
         }
-        parsed.stockGoals.categories[index] = {holdings, actualRate};
+        parsed.stockGoals.categories[index] = {holdings, actualRate, profit, hasProfit};
         foundStockGoals |= bit;
         continue;
       }
@@ -553,6 +698,56 @@ inline bool investmentParseCsv(Input &input, InvestmentSummary &out) {
     }
     foundAssets |= bit;
   }
+  if (parsed.valid) {
+    int64_t holdings = 0, profit = 0;
+    for (uint8_t i = 0; i < kInvestmentAssetCount - 1; ++i) {
+      holdings += parsed.assets[i].holdings;
+      profit += parsed.assets[i].profit;
+    }
+    const auto &published = parsed.assets[kInvestmentAssetCount - 1];
+    const int64_t tolerance = kInvestmentAssetCount / 2;
+    if (holdings > INT32_MAX || profit < INT32_MIN || profit > INT32_MAX ||
+        holdings - published.holdings > tolerance || published.holdings - holdings > tolerance ||
+        profit - published.profit > tolerance || published.profit - profit > tolerance) return false;
+    parsed.assets[kInvestmentAssetCount - 1] = {int32_t(holdings), int32_t(profit)};
+  }
+  if (foundDetailRegions == 0x0F) {
+    int64_t holdings = 0, profit = 0;
+    for (const auto &region : parsed.regions.regions) {
+      holdings += region.holdings;
+      profit += region.profit;
+    }
+    // Compare within this response rather than fetching a second live sheet.
+    if (holdings - parsed.assets[4].holdings <= 2 && parsed.assets[4].holdings - holdings <= 2 &&
+        profit - parsed.assets[4].profit <= 2 && parsed.assets[4].profit - profit <= 2) {
+      uint8_t largest = 0;
+      for (uint8_t i = 1; i < kInvestmentRegionCount; ++i) {
+        if (parsed.regions.regions[i].holdings > parsed.regions.regions[largest].holdings) largest = i;
+      }
+      auto &target = parsed.regions.regions[largest];
+      if (!investmentApplyRoundingResidual(target.holdings, target.profit,
+          parsed.assets[4].holdings - holdings, parsed.assets[4].profit - profit)) return false;
+      parsed.regions.total = parsed.assets[4];
+      parsed.regions.valid = true;
+    }
+  }
+  if (parsed.regions.valid && parsed.stockGoals.valid) {
+    auto &total = parsed.stockGoals.total;
+    const auto &canonical = parsed.regions.total;
+    const int64_t dh = int64_t(canonical.holdings) - total.holdings;
+    const int64_t dp = int64_t(canonical.profit) - total.profit;
+    if (dh >= -4 && dh <= 4 && dp >= -4 && dp <= 4) {
+      uint8_t largest = 0;
+      for (uint8_t i = 1; i < kInvestmentStockGoalCount; ++i) {
+        if (parsed.stockGoals.categories[i].holdings > parsed.stockGoals.categories[largest].holdings) largest = i;
+      }
+      // Allocate only bounded source-rounding residuals to the largest bucket.
+      auto &target = parsed.stockGoals.categories[largest];
+      if (!investmentApplyRoundingResidual(target.holdings, target.profit, dh, dp)) return false;
+      total.holdings = canonical.holdings;
+      total.profit = canonical.profit;
+    }
+  }
   if (!parsed.valid) return false;
   if (stockGoalSectionFailed) parsed.stockGoals = InvestmentStockGoals{};
   out = parsed;
@@ -570,7 +765,11 @@ inline bool investmentParseRegionsCsv(Input &input, InvestmentRegionSummary &out
   uint8_t foundRegions = 0;
 
   for (uint8_t rowIndex = 0; rowIndex < 128; ++rowIndex) {
+#ifdef ESP8266
+    InvestmentCsvRow &row = investmentCsvWorkspace();
+#else
     InvestmentCsvRow row;
+#endif
     if (!reader.next(row)) return false;
     if (!foundHeader) {
       if (investmentFindColumns(row, columns) && columns.category >= 0 &&
@@ -642,16 +841,20 @@ inline void investmentFormatMillions(int32_t amount, char *out, size_t size) {
       static_cast<unsigned long>(hundredths % 100));
 }
 
-inline void investmentFormatWholeMillions(int32_t amount, char *out, size_t size) {
+inline void investmentFormatWholeMillions(int64_t amount, char *out, size_t size) {
   const bool negative = amount < 0;
   const uint64_t magnitude = static_cast<uint64_t>(
       negative ? -static_cast<int64_t>(amount) : amount);
   const uint64_t millions = (magnitude + 500000) / 1000000;
-  std::snprintf(out, size, "%s%lu", negative ? "-" : "",
-      static_cast<unsigned long>(millions));
+  if (magnitude && !millions) {
+    std::snprintf(out, size, "%s1", negative ? ">-" : "<");
+  } else {
+    std::snprintf(out, size, "%s%lu", negative ? "-" : "",
+        static_cast<unsigned long>(millions));
+  }
 }
 
-inline bool investmentFormatProfit(int32_t profit, int32_t holdings,
+inline bool investmentFormatProfit(int64_t profit, int64_t holdings,
                                    char *out, size_t size) {
   const int64_t principal = static_cast<int64_t>(holdings) - profit;
   if (principal <= 0) return false;
@@ -665,12 +868,13 @@ inline bool investmentFormatProfit(int32_t profit, int32_t holdings,
   return true;
 }
 
-inline bool investmentFormatSharePercent(int32_t holdings, int32_t total,
+inline bool investmentFormatSharePercent(int64_t holdings, int64_t total,
                                          char *out, size_t size) {
   if (holdings < 0 || total <= 0) return false;
   const uint32_t percent = static_cast<uint32_t>(
       (static_cast<uint64_t>(holdings) * 100 + total / 2) / total);
-  std::snprintf(out, size, "%lu%%", static_cast<unsigned long>(percent));
+  if (holdings > 0 && !percent) std::snprintf(out, size, "<1%%");
+  else std::snprintf(out, size, "%lu%%", static_cast<unsigned long>(percent));
   return true;
 }
 

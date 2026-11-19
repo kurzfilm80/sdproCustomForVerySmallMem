@@ -215,6 +215,20 @@ void sendStatus() {
   doc["maximumFreeBlockBytes"] = ESP.getMaxFreeBlockSize();
   doc["heapFragmentationPercent"] = ESP.getHeapFragmentation();
 #ifdef SDPRO_INVESTMENT
+  static constexpr const char *kHoldingKeys[] = {
+      "investmentCombinedAssetsHoldings", "investmentCombinedRegionsHoldings",
+      "investmentCombinedThemesHoldings"};
+  static constexpr const char *kProfitKeys[] = {
+      "investmentCombinedAssetsProfit", "investmentCombinedRegionsProfit",
+      "investmentCombinedThemesProfit"};
+  for (uint8_t page = 0; page < 3; ++page) {
+    int64_t holdings, profit;
+    if (investmentReadTotal(page, holdings, profit)) {
+      doc[kHoldingKeys[page]] = holdings;
+      doc[kProfitKeys[page]] = profit;
+    }
+  }
+  doc["investmentParseFlags"] = investmentTargetParseFlags();
   doc["investmentValid"] = investmentTargetValid();
   doc["investmentError"] = investmentTargetError();
   doc["investmentHttpCode"] = investmentTargetHttpCode();

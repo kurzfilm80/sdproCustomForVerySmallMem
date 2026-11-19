@@ -3,7 +3,7 @@
 
 #include "ApiRefresh.h"
 #include "InvestmentModel.h"
-#include "RetirementModel.h"
+#include "InvestmentViewModel.h"
 #include "WifiPower.h"
 #include "fonts/InterTightBold18.h"
 
@@ -13,25 +13,26 @@
 #include <cstring>
 
 namespace {
+constexpr uint16_t kInvestmentHttpTimeoutMs = 12000;
 constexpr uint32_t kInvestmentRefreshIntervalMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr char kInvestmentCsvUrl[] =
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vSKM5jCdWT-tHl2d17txTGX6aVYidqItObi6crX5FXJlYUkmwD0civGzWwgpgckSMRKCgmgzVO6WOoC"
     "/pub?gid=827857148&single=true&output=csv";
-constexpr char kInvestmentRegionsCsvUrl[] =
-    "https://docs.google.com/spreadsheets/d/e/"
-    "2PACX-1vSKM5jCdWT-tHl2d17txTGX6aVYidqItObi6crX5FXJlYUkmwD0civGzWwgpgckSMRKCgmgzVO6WOoC"
-    "/pub?gid=379347683&single=true&output=csv";
 constexpr char kRetirementGoalsCsvUrl[] =
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vRLrnu8pLXR_YMGIy_IFYYrUpCfCC2mIvK3EmNTD75C4LQqi1RbLY0kd_CAuLS6G6gYBuMBYWZY9Y8E"
     "/pub?gid=827857148&single=true&output=csv";
+constexpr char kRetirementDetailsCsvUrl[] =
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vRLrnu8pLXR_YMGIy_IFYYrUpCfCC2mIvK3EmNTD75C4LQqi1RbLY0kd_CAuLS6G6gYBuMBYWZY9Y8E"
+    "/pub?gid=379347683&single=true&output=csv";
+RetirementThemeProductMap pendingRetirementProducts;
 InvestmentSummary summary{};
 InvestmentRegionSummary regionSummary{};
 RetirementSummary retirementSummary{};
 InvestmentPageCycle pageCycle;
 ApiRefresh summaryRefresh(kInvestmentRefreshIntervalMs);
-ApiRefresh regionRefresh(kInvestmentRefreshIntervalMs);
 ApiRefresh retirementRefresh(kInvestmentRefreshIntervalMs);
 int summaryHttpCode = 0;
 int regionHttpCode = 0;
@@ -42,6 +43,7 @@ bool retirementFetchFailed = false;
 uint32_t summarySuccessAt = 0;
 uint32_t regionSuccessAt = 0;
 uint32_t retirementSuccessAt = 0;
+uint8_t summaryParseFlags = 0;
 
 template <typename Data, typename Parser>
 bool fetch(const char *url, Data &next, int &httpCode, Parser parser) {
@@ -55,9 +57,9 @@ bool fetch(const char *url, Data &next, int &httpCode, Parser parser) {
   ActiveWifiTransfer activeTransfer;
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
-  client.setTimeout(6000);
+  client.setTimeout(kInvestmentHttpTimeoutMs);
   HTTPClient http;
-  http.setTimeout(6000);
+  http.setTimeout(kInvestmentHttpTimeoutMs);
   http.setReuse(false);
   http.useHTTP10(true);
   http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
@@ -73,7 +75,7 @@ bool fetch(const char *url, Data &next, int &httpCode, Parser parser) {
   bool ok = false;
   if (httpCode == HTTP_CODE_OK) {
     Stream &stream = http.getStream();
-    stream.setTimeout(6000);
+    stream.setTimeout(kInvestmentHttpTimeoutMs);
     ok = parser(stream, next);
     if (!ok) Serial.println(F("Investment CSV did not match the published sheet layout"));
   }
@@ -81,232 +83,131 @@ bool fetch(const char *url, Data &next, int &httpCode, Parser parser) {
   return ok;
 }
 
-enum class InvestmentRowKind : uint8_t { Section, Data, Error };
-
-struct InvestmentDisplayRow {
-  const char *label = "";
-  int32_t holdings = 0;
-  int32_t profit = 0;
-  int32_t shareTotal = 0;
-  uint8_t actualRate = 0;
-  InvestmentRowKind kind = InvestmentRowKind::Data;
-  bool hasProfit = false;
-  bool usesActualRate = false;
-};
-
-constexpr uint8_t kInvestmentDisplayRowLimit = 22;
-constexpr int16_t kInvestmentFirstRowBaseline = 54;
+constexpr int16_t kInvestmentScrollTop = 40;
+constexpr int16_t kInvestmentScrollHeight = 160;
+constexpr int16_t kInvestmentFooterTop = 200;
+constexpr int16_t kInvestmentFooterHeight = 40;
+constexpr int16_t kInvestmentFirstRowBaseline = 70;
 constexpr int16_t kInvestmentTotalBaseline = 222;
 
-void appendSection(InvestmentDisplayRow *rows, uint8_t &count,
-                   const char *label) {
-  if (count < kInvestmentDisplayRowLimit) {
-    rows[count].label = label;
-    rows[count++].kind = InvestmentRowKind::Section;
-  }
+InvestmentDisplayPage currentDisplayPage(uint8_t page) {
+  return investmentDisplayPage(page, summary, regionSummary, retirementSummary);
 }
 
-void appendError(InvestmentDisplayRow *rows, uint8_t &count) {
-  if (count < kInvestmentDisplayRowLimit) {
-    rows[count].label = "ERROR";
-    rows[count++].kind = InvestmentRowKind::Error;
-  }
-}
-
-void appendData(InvestmentDisplayRow *rows, uint8_t &count, const char *label,
-                const InvestmentAmount &amount, int32_t shareTotal,
-                bool hasProfit) {
-  if (count >= kInvestmentDisplayRowLimit) return;
-  rows[count] = {label, amount.holdings, amount.profit, shareTotal, 0,
-                 InvestmentRowKind::Data, hasProfit, false};
-  ++count;
-}
-
-void appendGoal(InvestmentDisplayRow *rows, uint8_t &count, const char *label,
-                const InvestmentStockGoal &goal) {
-  if (count >= kInvestmentDisplayRowLimit) return;
-  rows[count] = {label, goal.holdings, 0, 0, goal.actualRate,
-                 InvestmentRowKind::Data, false, true};
-  ++count;
-}
-
-uint8_t collectInvestmentRows(bool retirement,
-                              InvestmentDisplayRow *rows) {
-  uint8_t count = 0;
-  if (retirement) {
-    if (!retirementSummary.valid) return 0;
-    static constexpr const char *kAssetNames[kRetirementAssetCount - 1] = {
-        "CASH", "BONDS", "MIXED", "MATER", "REITS", "STOCK"};
-    static constexpr const char *kRegionNames[kRetirementRegionCount] = {
-        "GLOBL", "US", "CHINA", "KOREA"};
-    static constexpr const char *kGoalNames[kRetirementStockGoalCount] = {
-        "VALUE", "GOLD", "HLTH", "MKT", "TECH"};
-    const InvestmentAmount &assetTotal =
-        retirementSummary.assets[kRetirementAssetCount - 1];
-
-    appendSection(rows, count, "ASSET");
-    for (uint8_t i = 0; i < kRetirementAssetCount - 1; ++i) {
-      appendData(rows, count, kAssetNames[i], retirementSummary.assets[i],
-                 assetTotal.holdings, true);
-    }
-    appendSection(rows, count, "REGION");
-    for (uint8_t i = 0; i < kRetirementRegionCount; ++i) {
-      appendData(rows, count, kRegionNames[i], retirementSummary.regions[i],
-                 retirementSummary.regionTotal.holdings, false);
-    }
-    appendData(rows, count, "TOTAL", retirementSummary.regionTotal,
-               retirementSummary.regionTotal.holdings, false);
-    appendSection(rows, count, "GOALS");
-    for (uint8_t i = 0; i < kRetirementStockGoalCount; ++i) {
-      appendGoal(rows, count, kGoalNames[i], retirementSummary.stockGoals[i]);
-    }
-    appendGoal(rows, count, "TOTAL", retirementSummary.stockGoalTotal);
-    return count;
-  }
-
-  static constexpr const char *kAssetNames[kInvestmentAssetCount - 1] = {
-      "BONDS", "MATER", "CRYPT", "REITS", "STOCK"};
-  static constexpr const char *kRegionNames[kInvestmentRegionCount] = {
-      "GLOBL", "US", "CHINA", "KOREA"};
-  static constexpr const char *kGoalNames[kInvestmentStockGoalCount] = {
-      "FIN", "BIO", "SEMI", "AUTO", "CONS", "MKT", "ENRG", "TECH"};
-
-  if (summary.valid) {
-    const InvestmentAmount &assetTotal =
-        summary.assets[kInvestmentAssetCount - 1];
-    appendSection(rows, count, "ASSET");
-    for (uint8_t i = 0; i < kInvestmentAssetCount - 1; ++i) {
-      appendData(rows, count, kAssetNames[i], summary.assets[i],
-                 assetTotal.holdings, true);
-    }
-  } else {
-    appendSection(rows, count, "ASSET");
-    appendError(rows, count);
-  }
-
-  if (regionSummary.valid) {
-    appendSection(rows, count, "REGION");
-    for (uint8_t i = 0; i < kInvestmentRegionCount; ++i) {
-      appendData(rows, count, kRegionNames[i], regionSummary.regions[i],
-                 regionSummary.total.holdings, true);
-    }
-    appendData(rows, count, "TOTAL", regionSummary.total,
-               regionSummary.total.holdings, true);
-  } else {
-    appendSection(rows, count, "REGION");
-    appendError(rows, count);
-  }
-
-  if (summary.stockGoals.valid) {
-    appendSection(rows, count, "GOALS");
-    for (uint8_t i = 0; i < kInvestmentStockGoalCount; ++i) {
-      appendGoal(rows, count, kGoalNames[i], summary.stockGoals.categories[i]);
-    }
-    appendGoal(rows, count, "TOTAL", summary.stockGoals.total);
-  } else {
-    appendSection(rows, count, "GOALS");
-    appendError(rows, count);
-  }
-  return count;
-}
-
-void drawHeader(TFT_eSPI &display, bool retirement) {
-  display.setTextFont(1);
-  display.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+void drawHeader(TFT_eSPI &display, uint8_t page) {
+  static constexpr const char *kTitles[kInvestmentPageCount] = {
+      "ASSET", "STOCK REGION", "STOCK THEME"};
+  display.setFreeFont(&InterTightBold18);
+  display.setTextColor(TFT_CYAN, TFT_BLACK);
   display.setTextDatum(L_BASELINE);
-  display.drawString(retirement ? "RETIREMENT" : "INVESTMENT", 4, 9);
-  display.setTextDatum(R_BASELINE);
-  display.drawString(retirement ? "2/2" : "1/2", 236, 9);
-  display.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  display.setTextDatum(L_BASELINE);
-  display.drawString("NAME", 4, 21);
-  display.setTextDatum(R_BASELINE);
-  display.drawString("SHARE", 100, 21);
-  display.drawString("AMOUNT", 158, 21);
-  display.drawString("RETURN", 236, 21);
+  display.drawString(kTitles[page], 4, 24);
 }
 
 void drawRow(TFT_eSPI &display, const InvestmentDisplayRow &row,
              int16_t baseline, bool pinnedTotal = false) {
-  if (row.kind == InvestmentRowKind::Section) {
-    display.setTextFont(1);
-    display.setTextColor(TFT_CYAN, TFT_BLACK);
-    display.setTextDatum(L_BASELINE);
-    display.drawString(row.label, 4, baseline - 8);
-    return;
-  }
-
-  const uint16_t baseColor = pinnedTotal ? TFT_YELLOW
-      : row.kind == InvestmentRowKind::Error ? TFT_ORANGE : TFT_WHITE;
+  const uint16_t baseColor = pinnedTotal ? TFT_YELLOW : TFT_WHITE;
   char amount[16] = "--";
   char share[8] = "--";
   char returnText[16] = "--";
-  if (row.kind == InvestmentRowKind::Data) {
-    investmentFormatWholeMillions(row.holdings, amount, sizeof(amount));
-    if (row.usesActualRate) {
-      snprintf(share, sizeof(share), "%u%%", unsigned(row.actualRate));
-    } else if (!investmentFormatSharePercent(row.holdings, row.shareTotal,
-                                             share, sizeof(share))) {
-      strlcpy(share, "--", sizeof(share));
-    }
-    if (row.hasProfit &&
-        !investmentFormatProfit(row.profit, row.holdings,
-                                returnText, sizeof(returnText))) {
-      strlcpy(returnText, "--", sizeof(returnText));
-    }
+  investmentFormatWholeMillions(row.holdings, amount, sizeof(amount));
+  if (!investmentFormatSharePercent(row.holdings, row.shareTotal,
+                                    share, sizeof(share))) {
+    strlcpy(share, "--", sizeof(share));
+  }
+  if (row.hasProfit &&
+      !investmentFormatProfit(row.profit, row.holdings,
+                              returnText, sizeof(returnText))) {
+    strlcpy(returnText, "--", sizeof(returnText));
   }
 
-  const uint16_t returnColor = row.kind == InvestmentRowKind::Error
-      ? TFT_ORANGE
-      : !row.hasProfit ? TFT_LIGHTGREY
+  const uint16_t returnColor = !row.hasProfit ? TFT_LIGHTGREY
       : row.profit > 0 ? TFT_RED
       : row.profit < 0 ? TFT_BLUE
       : pinnedTotal ? TFT_YELLOW : TFT_LIGHTGREY;
   display.setFreeFont(&InterTightBold18);
-  display.setTextDatum(L_BASELINE);
   display.setTextColor(baseColor, TFT_BLACK);
+  display.setTextDatum(L_BASELINE);
   display.drawString(row.label, 4, baseline);
+  display.drawString(share, 70, baseline);
   display.setTextDatum(R_BASELINE);
-  display.drawString(share, 100, baseline);
-  display.drawString(amount, 158, baseline);
+  display.drawString(amount, 163, baseline);
   display.setTextColor(returnColor, TFT_BLACK);
   display.drawString(returnText, 236, baseline);
 }
 
-void drawInvestmentPage(TFT_eSPI &display, bool retirement) {
-  display.fillScreen(TFT_BLACK);
-  drawHeader(display, retirement);
-  InvestmentDisplayRow rows[kInvestmentDisplayRowLimit]{};
-  const uint8_t count = collectInvestmentRows(retirement, rows);
+void drawInvestmentPage(TFT_eSPI &display, uint8_t page) {
+  static bool hasRenderedPage = false;
+  static uint8_t lastPage = 0;
+  static bool hasDrawnTotal = false;
+  static bool hadData = false;
+  static InvestmentDisplayRow lastDrawnTotal{};
+  const bool pageChanged = !hasRenderedPage || lastPage != page;
+  if (pageChanged) {
+    if (!hasRenderedPage) {
+      display.fillScreen(TFT_BLACK);
+    } else {
+      display.fillRect(0, 0, 240, kInvestmentScrollTop, TFT_BLACK);
+      display.fillRect(0, kInvestmentFooterTop, 240,
+                       kInvestmentFooterHeight, TFT_BLACK);
+    }
+    display.fillRect(0, kInvestmentScrollTop, 240,
+                     kInvestmentScrollHeight, TFT_BLACK);
+    drawHeader(display, page);
+    hasDrawnTotal = false;
+  }
+  const InvestmentDisplayPage data = currentDisplayPage(page);
+  const uint8_t count = data.count;
+  hasRenderedPage = true;
+  lastPage = page;
   if (!count) {
+    hadData = false;
+    display.fillRect(0, kInvestmentScrollTop, 240,
+                     kInvestmentScrollHeight, TFT_BLACK);
     display.setFreeFont(&InterTightBold18);
     display.setTextDatum(C_BASELINE);
-    const bool failed = retirement ? retirementFetchFailed : summaryFetchFailed;
+    const bool failed = page == 0 ? summaryFetchFailed
+        : page == 1 ? regionFetchFailed || retirementFetchFailed
+                    : summaryFetchFailed || retirementFetchFailed;
     display.setTextColor(failed ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK);
-    display.drawString(failed ? "FETCH FAILED" : "LOADING DATA", 120, 132);
+    display.drawString(failed ? "ERROR" : "LOADING", 120, 132);
     return;
   }
 
-  for (uint8_t slot = 0; slot < kInvestmentVisibleRows; ++slot) {
+  if (!hadData) {
+    display.fillRect(0, kInvestmentScrollTop, 240,
+                     kInvestmentScrollHeight, TFT_BLACK);
+  }
+  hadData = true;
+  display.setViewport(0, kInvestmentScrollTop, 240,
+                      kInvestmentScrollHeight, false);
+  for (uint8_t slot = 0; slot <= kInvestmentVisibleRows; ++slot) {
     const uint8_t index = pageCycle.scrollIndex + slot;
-    if (index >= count) break;
     const int16_t baseline = kInvestmentFirstRowBaseline +
         slot * kInvestmentScrollRowHeight - pageCycle.scrollOffset;
-    if (baseline < 43 || baseline > 184) continue;
-    drawRow(display, rows[index], baseline);
+    const int16_t clearTop = baseline - 20 > kInvestmentScrollTop
+        ? baseline - 20 : kInvestmentScrollTop;
+    const int16_t clearBottom = baseline + 3 <
+            kInvestmentScrollTop + kInvestmentScrollHeight
+        ? baseline + 3 : kInvestmentScrollTop + kInvestmentScrollHeight;
+    if (clearBottom > clearTop) {
+      display.fillRect(0, clearTop, 240, clearBottom - clearTop, TFT_BLACK);
+    }
+    if (index >= count) continue;
+    drawRow(display, data.rows[index], baseline);
   }
 
-  if (retirement) {
-    const InvestmentAmount &total =
-        retirementSummary.assets[kRetirementAssetCount - 1];
-    drawRow(display, {"TOTAL", total.holdings, total.profit, total.holdings,
-                      100, InvestmentRowKind::Data, true, false},
-            kInvestmentTotalBaseline, true);
-  } else if (summary.valid) {
-    const InvestmentAmount &total = summary.assets[kInvestmentAssetCount - 1];
-    drawRow(display, {"TOTAL", total.holdings, total.profit, total.holdings,
-                      100, InvestmentRowKind::Data, true, false},
-            kInvestmentTotalBaseline, true);
+  display.resetViewport();
+
+  const InvestmentDisplayRow &total = data.total;
+  if (!hasDrawnTotal || total.holdings != lastDrawnTotal.holdings ||
+      total.profit != lastDrawnTotal.profit ||
+      total.shareTotal != lastDrawnTotal.shareTotal ||
+      total.hasProfit != lastDrawnTotal.hasProfit) {
+    display.fillRect(0, kInvestmentFooterTop, 240,
+                     kInvestmentFooterHeight, TFT_BLACK);
+    drawRow(display, total, kInvestmentTotalBaseline, true);
+    lastDrawnTotal = total;
+    hasDrawnTotal = true;
   }
 }
 
@@ -317,40 +218,44 @@ bool investmentPoll(uint32_t now) {
     InvestmentSummary next{};
     const bool parsed = fetch(kInvestmentCsvUrl, next, summaryHttpCode,
         [](Stream &stream, InvestmentSummary &data) {
-          return investmentParseCsv(stream, data);
+          const bool parsed = investmentParseCsv(stream, data);
+          summaryParseFlags = (parsed ? 1 : 0) | (data.valid ? 2 : 0) |
+                              (data.stockGoals.valid ? 4 : 0);
+          return parsed;
         });
-    const bool success = parsed && next.stockGoals.valid;
+    const bool success = parsed && next.stockGoals.valid && next.regions.valid &&
+        next.stockGoals.total.hasProfit &&
+        next.stockGoals.total.holdings == next.regions.total.holdings &&
+        next.stockGoals.total.profit == next.regions.total.profit;
     if (parsed && !next.stockGoals.valid) {
       Serial.println(F("Investment stock goals are incomplete"));
     }
     summaryRefresh.complete(millis(), success);
-    summaryFetchFailed = !success;
+    summaryFetchFailed = regionFetchFailed = !success;
+    regionHttpCode = summaryHttpCode;
     if (success) {
       summary = next;
       summarySuccessAt = millis();
-    }
-    return true;
-  }
-  if (regionRefresh.due(now)) {
-    InvestmentRegionSummary next{};
-    const bool success = fetch(kInvestmentRegionsCsvUrl, next, regionHttpCode,
-        [](Stream &stream, InvestmentRegionSummary &data) {
-          return investmentParseRegionsCsv(stream, data);
-        });
-    regionRefresh.complete(millis(), success);
-    regionFetchFailed = !success;
-    if (success) {
-      regionSummary = next;
-      regionSuccessAt = millis();
+      if (next.regions.valid) {
+        regionSummary = next.regions;
+        regionSuccessAt = summarySuccessAt;
+        regionHttpCode = summaryHttpCode;
+        regionFetchFailed = false;
+      }
     }
     return true;
   }
   if (retirementRefresh.due(now)) {
     RetirementSummary next{};
-    const bool success = fetch(kRetirementGoalsCsvUrl, next, retirementHttpCode,
+    const bool goalsParsed = fetch(kRetirementGoalsCsvUrl, next, retirementHttpCode,
         [](Stream &stream, RetirementSummary &data) {
-          return retirementParseGoalsCsv(stream, data);
+          return retirementParseGoalsCsv(stream, data, &pendingRetirementProducts);
         });
+    const bool success = goalsParsed && pendingRetirementProducts.valid &&
+        fetch(kRetirementDetailsCsvUrl, next, retirementHttpCode,
+          [](Stream &stream, RetirementSummary &data) {
+            return retirementParseDetailsCsv(stream, data, pendingRetirementProducts);
+          });
     retirementRefresh.complete(millis(), success);
     retirementFetchFailed = !success;
     if (success) {
@@ -363,15 +268,30 @@ bool investmentPoll(uint32_t now) {
 }
 
 bool investmentAdvance(uint32_t now) {
-  InvestmentDisplayRow rows[kInvestmentDisplayRowLimit]{};
-  const uint8_t count = collectInvestmentRows(pageCycle.page == 1, rows);
+  const uint8_t count = currentDisplayPage(pageCycle.page).count;
   return pageCycle.advance(now, count);
 }
 
 void investmentDraw(TFT_eSPI &display) {
-  drawInvestmentPage(display, pageCycle.page == 1);
+  drawInvestmentPage(display, pageCycle.page);
 }
 
+bool investmentReadTotal(uint8_t page, int64_t &holdings, int64_t &profit) {
+  if (!summary.valid || !retirementSummary.valid) return false;
+  if (page == 0) {
+    holdings = int64_t(summary.assets[5].holdings) + retirementSummary.assets[6].holdings;
+    profit = int64_t(summary.assets[5].profit) + retirementSummary.assets[6].profit;
+  } else if (page == 1 && regionSummary.valid && retirementSummary.regionProfitValid) {
+    holdings = int64_t(regionSummary.total.holdings) + retirementSummary.regionTotal.holdings;
+    profit = int64_t(regionSummary.total.profit) + retirementSummary.regionTotal.profit;
+  } else if (page == 2 && summary.stockGoals.valid) {
+    holdings = int64_t(summary.stockGoals.total.holdings) + retirementSummary.stockGoalTotal.holdings;
+    profit = int64_t(summary.stockGoals.total.profit) + retirementSummary.stockGoalTotal.profit;
+  } else return false;
+  return true;
+}
+
+uint8_t investmentTargetParseFlags() { return summaryParseFlags; }
 bool investmentTargetValid() { return summary.valid; }
 bool investmentTargetError() { return summaryFetchFailed; }
 int investmentTargetHttpCode() { return summaryHttpCode; }

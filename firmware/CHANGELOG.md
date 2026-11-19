@@ -4,11 +4,16 @@
 
 ### Features
 
-- Build a separate SD PRO investment-summary image with two account pages:
-  general investment and retirement. Each combines assets, regional holdings
-  and stock goals in a bottom-to-top scroll with four visible rows and a fixed
-  total; retain rounded amounts, allocation shares and red/blue cost-basis
-  returns. Discover CSV columns by header and retain last-good data on failures.
+- Scroll investment lists twice continuously with 1.5-second start/end pauses;
+  display pages of four or fewer rows for 10 seconds.
+
+- Build a separate SD PRO investment-summary image with ASSET, STOCK REGION
+  and STOCK THEME pages. Combine both accounts' full assets, including cash
+  and mixed funds; include only stock asset classes in region/theme pages.
+  Aggregate holdings and profit by exact source classification and calculate
+  combined cost-basis returns. Show four single-line rows and pinned totals
+  using uniform 18px text, cyan titles and red/blue returns. Refresh every six
+  hours, preserve last-good snapshots and expose exact totals through status.
 - Configure automatic or fixed WEATHER/AIR QUALITY display from the web portal;
   choose 5/10/15/30/60-second durations (defaults 15/10 seconds) and apply without
   rebooting while both APIs keep their independent refresh schedules.
@@ -33,6 +38,22 @@
 
 ### Fixes
 
+- Move the shared investment CSV row buffer off the ESP8266 continuation stack
+  to leave room for TLS reads during startup and account refreshes.
+
+- Keep stock regions and themes on separate screens with cyan titles, no
+  repeated section/column labels, and row updates clipped to the scrolling
+  body to preserve fixed totals. Clear loading messages before rendering data.
+  Reject incomplete profit data rather than showing partial-account returns.
+- Eliminate missing retirement assets and mismatched stock totals by excluding
+  mixed funds and closed positions from stock analysis. Use one amount/profit
+  snapshot per account and validate source rows and table totals. Show `<1`
+  and `<1%` for positive values that would otherwise disappear as zero.
+- Accept only bounded per-row rounding residuals in published aggregates,
+  normalize stock totals consistently, and reject larger discrepancies or
+  invalid corrected amounts instead of repeatedly failing valid one-won cases.
+- Allow twelve seconds for investment CSV responses after observed request
+  timeouts; expose the latest investment parser completion flags for diagnosis.
 - Show only actual KST weekdays for tomorrow and day-after, wrap Saturday/Sunday
   correctly and show `---` until time synchronization.
 - Improve black-background readability with white labels/temperatures, cyan rain,
@@ -54,6 +75,10 @@
 - Report DNS lookup failures, TLS errors and available heap for weather requests.
 
 ### Refactoring
+
+- Add bounded full-product-name hashing and source-driven theme matching to
+  the streaming investment CSV reader. Read active retirement instrument
+  tables separately from classification and reject ambiguous or unknown names.
 
 - Run ESP8266 at 80MHz, remove mDNS and batch application checks at 100ms
   with a 10ms cooperative idle while continuing to service HTTP and captive DNS.

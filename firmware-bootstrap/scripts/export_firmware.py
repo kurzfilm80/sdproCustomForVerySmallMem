@@ -1,4 +1,4 @@
-"""Export the completed bootstrap image to the shared SDPRO directory."""
+"""Export the completed bootstrap image to the repository's dist directory."""
 
 from pathlib import Path
 import shutil
@@ -9,9 +9,11 @@ Import("env")  # noqa: F821 - PlatformIO/SCons build environment
 def export_firmware(source, target, env):
     image = Path(env.subst("$BUILD_DIR/${PROGNAME}.bin"))
     destination = (
-        Path(env.subst("$PROJECT_DIR")).resolve().parents[1]
-        / "SDPRO-Weather-Bootstrap.bin"
+        Path(env.subst("$PROJECT_DIR")).resolve().parent
+        / "dist"
+        / "sdpro-bootstrap.bin"
     )
+    destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(image, destination)
     print(f"Firmware exported: {destination} ({destination.stat().st_size} bytes)")
 

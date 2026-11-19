@@ -81,8 +81,8 @@
 - Add native ticker parsing/settings and portal regression tests, and repair
   warning errors in the existing URL-boundary test harness.
 
-- export successful weather bootstrap builds to `../SDPRO-Weather-Bootstrap.bin`,
-  including incremental builds
+- Export successful weather bootstrap builds to `dist/sdpro-bootstrap.bin`,
+  including incremental builds.
 - remove obsolete release version and SHA-256 requirements from `bootstrap-build`
   for the manual-upload weather installer
 

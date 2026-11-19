@@ -1,5 +1,6 @@
 #include "InvestmentModel.h"
 #include "RetirementModel.h"
+#include "InvestmentViewModel.h"
 
 #include <cassert>
 #include <cstddef>
@@ -244,27 +245,133 @@ int main() {
   assert(nativeRegions.total.holdings == 10000000);
   assert(nativeRegions.total.profit == 300000);
 
-  InvestmentPageCycle pages;
-  assert(!pages.advance(1000, 6));
-  assert(pages.page == 0);
-  assert(!pages.advance(2499, 6));
-  assert(pages.page == 0);
-  assert(!pages.advance(2500, 6));
-  for (uint32_t now = 2580; now <= 4100; now += 80) {
-    assert(pages.advance(now, 6));
+  // All pages combine both accounts; ASSET includes cash and mixed assets.
+  InvestmentSummary viewInvestment{};
+  InvestmentRegionSummary viewRegions{};
+  RetirementSummary viewRetirement{};
+  assert(investmentDisplayPage(0, viewInvestment, viewRegions, viewRetirement).count == 0);
+  viewInvestment.valid = viewInvestment.stockGoals.valid = true;
+  viewInvestment.assets[0] = {17280457, 6556321};
+  viewInvestment.assets[5] = {198764090, -15406280};
+  assert(investmentDisplayPage(0, viewInvestment, viewRegions, viewRetirement).count == 0);
+  assert(investmentDisplayPage(1, viewInvestment, viewRegions, viewRetirement).count == 0);
+  assert(investmentDisplayPage(2, viewInvestment, viewRegions, viewRetirement).count == 0);
+  viewRegions.valid = true;
+  assert(investmentDisplayPage(1, viewInvestment, viewRegions, viewRetirement).count == 0);
+  viewRetirement.valid = true;
+  viewRetirement.assets[0] = {123072, 0};
+  viewRetirement.assets[1] = {9739990, -71342};
+  viewRetirement.assets[2] = {18413560, 247816};
+  viewRetirement.assets[6] = {69532480, 5442931};
+  auto assetPage = investmentDisplayPage(0, viewInvestment, viewRegions, viewRetirement);
+  assert(assetPage.count == 7);
+  assert(std::strcmp(assetPage.rows[0].label, "CASH") == 0);
+  assert(assetPage.rows[0].holdings == 123072);
+  assert(assetPage.rows[1].holdings == 27020447);
+  assert(assetPage.rows[1].profit == 6484979 && assetPage.rows[1].hasProfit);
+  assert(assetPage.rows[2].holdings == 18413560);
+  assert(assetPage.total.holdings == 268296570);
+  assert(assetPage.total.profit == -9963349);
+
+  for (unsigned i = 0; i < 4; ++i) {
+    viewRegions.regions[i] = {int32_t((i + 1) * 1000000), 10000};
+    viewRetirement.regions[i].holdings = int32_t((i + 1) * 2000000);
   }
-  assert(pages.scrollIndex == 1);
-  assert(pages.scrollOffset == 0);
-  for (uint32_t now = 4180; now < 9000; now += 80) {
-    pages.advance(now, 6);
+  viewRegions.total = {10000000, 40000};
+  viewRetirement.regionTotal.holdings = 20000000;
+  auto regionPage = investmentDisplayPage(1, viewInvestment, viewRegions, viewRetirement);
+  assert(regionPage.count == 4 && regionPage.total.holdings == 30000000);
+  for (unsigned i = 0; i < 4; ++i) {
+    assert(regionPage.rows[i].holdings == int64_t((i + 1) * 3000000));
+    assert(regionPage.rows[i].shareTotal == 30000000);
+    assert(!regionPage.rows[i].hasProfit);  // No partial-account returns.
   }
-  assert(pages.page == 0);
-  assert(pages.advance(9100, 6));
-  assert(pages.page == 1);
-  assert(pages.scrollIndex == 0);
-  assert(!pages.advance(10899, 4));
-  assert(pages.advance(10900, 4));
-  assert(pages.page == 0);
+  for (unsigned i = 0; i < 8; ++i) {
+    viewInvestment.stockGoals.categories[i] = {int32_t((i + 1) * 1000000), 99};
+  }
+  viewInvestment.stockGoals.total.holdings = 36000000;
+  for (unsigned i = 0; i < 5; ++i) {
+    viewRetirement.stockGoals[i] = {int32_t((i + 1) * 10000000), 1};
+  }
+  viewRetirement.stockGoalTotal.holdings = 150000000;
+  auto themePage = investmentDisplayPage(2, viewInvestment, viewRegions, viewRetirement);
+  assert(themePage.count == 10 && themePage.total.holdings == 186000000);
+  assert(std::strcmp(themePage.rows[1].label, "HLTH") == 0);
+  assert(themePage.rows[1].holdings == 32000000);
+  assert(themePage.rows[5].holdings == 46000000);
+  assert(themePage.rows[7].holdings == 58000000);
+  assert(themePage.rows[8].holdings == 10000000);
+  assert(themePage.rows[9].holdings == 20000000);
+  int64_t themeHoldings = 0;
+  for (const auto &row : themePage.rows) {
+    themeHoldings += row.holdings;
+    assert(row.shareTotal == 186000000 && !row.hasProfit);
+  }
+  assert(themeHoldings == themePage.total.holdings);
+  char combinedText[32];
+  assert(investmentFormatSharePercent(themePage.rows[1].holdings,
+      themePage.total.holdings, combinedText, sizeof(combinedText)));
+  assert(std::strcmp(combinedText, "17%") == 0);  // Recomputed, never added rates.
+  viewRegions.total.holdings = viewRetirement.regionTotal.holdings = INT32_MAX;
+  viewRegions.regions[0].holdings = viewRetirement.regions[0].holdings = INT32_MAX;
+  regionPage = investmentDisplayPage(1, viewInvestment, viewRegions, viewRetirement);
+  assert(regionPage.total.holdings == 4294967294LL);
+  assert(regionPage.rows[0].holdings == 4294967294LL);
+  investmentFormatWholeMillions(regionPage.total.holdings, combinedText, sizeof(combinedText));
+  assert(std::strcmp(combinedText, "4295") == 0);
+  assert(investmentFormatSharePercent(regionPage.rows[0].holdings,
+      regionPage.total.holdings, combinedText, sizeof(combinedText)));
+  assert(std::strcmp(combinedText, "100%") == 0);
+  assert(investmentDisplayPage(3, viewInvestment, viewRegions, viewRetirement).count == 0);
+  viewInvestment.stockGoals.valid = false;
+  assert(investmentDisplayPage(2, viewInvestment, viewRegions, viewRetirement).count == 0);
+  assert(investmentDisplayPage(0, viewInvestment, viewRegions, viewRetirement).count == 7);
+
+  // Verify continuous passes, both boundary pauses, static pages and wraparound.
+  const uint8_t scrollRowCounts[] = {5, 7, 10};
+  for (uint8_t rows : scrollRowCounts) {
+    InvestmentPageCycle pages;
+    uint32_t now = 1000;
+    assert(!pages.advance(now, rows));
+    assert(!pages.advance(now + 1499, rows));
+    now += 1500;
+    assert(!pages.advance(now, rows));
+    for (unsigned pass = 0; pass < 2; ++pass) {
+      for (unsigned row = 0; row < unsigned(rows - 4); ++row) {
+        for (unsigned frame = 0; frame < 18; ++frame) {
+          now += 80;
+          assert(pages.advance(now, rows));
+          assert(pages.page == 0);
+        }
+        assert(pages.scrollIndex == row + 1);
+      }
+      if (pass == 0) {
+        now += 80;
+        assert(pages.advance(now, rows));
+        assert(pages.scrollIndex == 0 && pages.scrolling);
+      }
+    }
+    assert(!pages.advance(now + 1499, rows));
+    now += 1500;
+    assert(pages.advance(now, rows));
+    assert(pages.page == 1);
+    // First call supplies the new page's row count.
+    assert(!pages.advance(now, 4));
+    assert(!pages.advance(now + 9999, 4));
+    now += 10000;
+    assert(pages.advance(now, 4));
+    assert(pages.page == 2);
+    assert(!pages.advance(now, 1));
+    assert(!pages.advance(now + 9999, 1));
+    now += 10000;
+    assert(pages.advance(now, 1));
+    assert(pages.page == 0);
+  }
+  InvestmentPageCycle changing;
+  assert(!changing.advance(0, 0));
+  assert(!changing.advance(9000, 4));
+  assert(!changing.advance(18999, 4));
+  assert(changing.advance(19000, 4));
 
   const char invalid[] =
       "투자목표\n"

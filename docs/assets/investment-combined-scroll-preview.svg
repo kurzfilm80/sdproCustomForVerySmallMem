@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 720 480" role="img"><title>Six separate investment pages, uniform 36px text</title><rect width="720" height="480" fill="#222"/>
+<g transform="translate(0 0)" font-family="Inter Tight, Arial, sans-serif" font-size="36" font-weight="700"><rect width="239" height="239" fill="#000"/>
+<text x="4" y="32" fill="#00ffff" text-anchor="start">INV ASSET</text>
+<text x="4" y="76" fill="white" text-anchor="start">BONDS</text>
+<text x="236" y="76" fill="white" text-anchor="end">9%</text>
+<text x="4" y="114" fill="white" text-anchor="start">17</text>
+<text x="236" y="114" fill="#ff4444" text-anchor="end">+61.4%</text>
+<text x="4" y="190" fill="yellow" text-anchor="start">TOTAL</text>
+<text x="236" y="190" fill="yellow" text-anchor="end">100%</text>
+<text x="4" y="228" fill="yellow" text-anchor="start">198</text>
+<text x="236" y="228" fill="#ff4444" text-anchor="end">+13.2%</text>
+</g>
+<g transform="translate(240 0)" font-family="Inter Tight, Arial, sans-serif" font-size="36" font-weight="700"><rect width="239" height="239" fill="#000"/>
+<text x="4" y="32" fill="#00ffff" text-anchor="start">INV REGION</text>
+<text x="4" y="76" fill="white" text-anchor="start">GLOBL</text>
+<text x="236" y="76" fill="white" text-anchor="end">30%</text>
+<text x="4" y="114" fill="white" text-anchor="start">3</text>
+<text x="236" y="114" fill="#ff4444" text-anchor="end">+5.0%</text>
+<text x="4" y="190" fill="yellow" text-anchor="start">TOTAL</text>
+<text x="236" y="190" fill="yellow" text-anchor="end">100%</text>
+<text x="4" y="228" fill="yellow" text-anchor="start">10</text>
+<text x="236" y="228" fill="#ff4444" text-anchor="end">+3.1%</text>
+</g>
+<g transform="translate(480 0)" font-family="Inter Tight, Arial, sans-serif" font-size="36" font-weight="700"><rect width="239" height="239" fill="#000"/>
+<text x="4" y="32" fill="#00ffff" text-anchor="start">INV GOAL</text>
+<text x="4" y="76" fill="white" text-anchor="start">FIN</text>
+<text x="236" y="76" fill="white" text-anchor="end">11%</text>
+<text x="4" y="114" fill="white" text-anchor="start">11</text>
+<text x="236" y="114" fill="#ccc" text-anchor="end">--</text>
+<text x="4" y="190" fill="yellow" text-anchor="start">TOTAL</text>
+<text x="236" y="190" fill="yellow" text-anchor="end">100%</text>
+<text x="4" y="228" fill="yellow" text-anchor="start">108</text>
+<text x="236" y="228" fill="#ccc" text-anchor="end">--</text>
+</g>
+<g transform="translate(0 240)" font-family="Inter Tight, Arial, sans-serif" font-size="36" font-weight="700"><rect width="239" height="239" fill="#000"/>
+<text x="4" y="32" fill="#00ffff" text-anchor="start">RET ASSET</text>
+<text x="4" y="76" fill="white" text-anchor="start">CASH</text>
+<text x="236" y="76" fill="white" text-anchor="end">12%</text>
+<text x="4" y="114" fill="white" text-anchor="start">10</text>
+<text x="236" y="114" fill="#ff4444" text-anchor="end">+0.0%</text>
+<text x="4" y="190" fill="yellow" text-anchor="start">TOTAL</text>
+<text x="236" y="190" fill="yellow" text-anchor="end">100%</text>
+<text x="4" y="228" fill="yellow" text-anchor="start">84</text>
+<text x="236" y="228" fill="#ff4444" text-anchor="end">+7.2%</text>
+</g>
+<g transform="translate(240 240)" font-family="Inter Tight, Arial, sans-serif" font-size="36" font-weight="700"><rect width="239" height="239" fill="#000"/>
+<text x="4" y="32" fill="#00ffff" text-anchor="start">RET REGION</text>
+<text x="4" y="76" fill="white" text-anchor="start">GLOBL</text>
+<text x="236" y="76" fill="white" text-anchor="end">40%</text>
+<text x="4" y="114" fill="white" text-anchor="start">34</text>
+<text x="236" y="114" fill="#ccc" text-anchor="end">--</text>
+<text x="4" y="190" fill="yellow" text-anchor="start">TOTAL</text>
+<text x="236" y="190" fill="yellow" text-anchor="end">100%</text>
+<text x="4" y="228" fill="yellow" text-anchor="start">84</text>
+<text x="236" y="228" fill="#ccc" text-anchor="end">--</text>
+</g>
+<g transform="translate(480 240)" font-family="Inter Tight, Arial, sans-serif" font-size="36" font-weight="700"><rect width="239" height="239" fill="#000"/>
+<text x="4" y="32" fill="#00ffff" text-anchor="start">RET GOAL</text>
+<text x="4" y="76" fill="white" text-anchor="start">VALUE</text>
+<text x="236" y="76" fill="white" text-anchor="end">20%</text>
+<text x="4" y="114" fill="white" text-anchor="start">17</text>
+<text x="236" y="114" fill="#ccc" text-anchor="end">--</text>
+<text x="4" y="190" fill="yellow" text-anchor="start">TOTAL</text>
+<text x="236" y="190" fill="yellow" text-anchor="end">100%</text>
+<text x="4" y="228" fill="yellow" text-anchor="start">84</text>
+<text x="236" y="228" fill="#ccc" text-anchor="end">--</text>
+</g>
+</svg>
