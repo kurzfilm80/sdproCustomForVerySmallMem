@@ -6,6 +6,6 @@
     "build:ticker": "terser ticker.js --compress --mangle --output ticker.min.js"
   },
   "devDependencies": {
-    "terser": "5.44.0"
+    "terser": "5.51.2"
   }
 }
